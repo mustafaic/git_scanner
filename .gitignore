@@ -1,0 +1,24 @@
+# Secrets and env
+.env
+.env.*
+*.pem
+*.key
+secrets/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# Tool outputs (may contain company data)
+inventory.csv
+inventory_summary.json
+*.inventory.json
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

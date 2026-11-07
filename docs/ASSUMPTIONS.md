@@ -1,0 +1,126 @@
+# ASSUMPTIONS.md
+
+Doğrulanamayan veya kısmi doğrulanan noktalar (master_prompt.md kural 2).
+Her biri Aşama 1+ sırasında gerçek org/gerçek araçla netleştirilmeli.
+
+## 1. ~~OSV-Scanner: SBOM girdisi + `--offline` kombinasyonu~~ — ÇÖZÜLDÜ
+
+**Çözüldü (2026-11-08, bkz. docs/MATCHING_SPIKE.md §3):** Gerçek
+`osv-scanner` v2.7.0 binary'si indirilip, kırık/çözümlenemez bir proxy
+ile (`HTTP_PROXY=http://127.0.0.1:1`) minimal bir CycloneDX SBOM fixture'ı
+üzerinde çalıştırıldı; sonuç başarılı ve DB-cache'li normal çalıştırmayla
+bit bit aynıydı → SBOM girdisi de gerçekten offline çalışıyor. Ayrıca
+`--sbom` flag'inin v2.7.0'da deprecated olduğu, SBOM dosyalarının artık
+dizin taramasında otomatik algılandığı görüldü.
+
+## 2. Gitleaks: varsayılan telemetri/ağ çağrısı yokluğu
+
+**Varsayım:** Gitleaks'in hiçbir varsayılan ağ çağrısı/telemetrisi yok.
+
+**Neden doğrulanamadı:** README'de konu hiç geçmiyor (ne "vardır" ne
+"yoktur" deniyor). Mimari olarak yerel `git log` çıktısını parse ettiği
+için tasarım gereği ağ bağımlılığı olmaması mantıklı, ama vendor'dan açık
+bir beyan yok.
+
+**Nasıl netleştirilir:** Worker zaten `network_mode: none` olacağı için
+ürün güvenliği açısından risk düşük (ikinci güvence katmanı), ama
+**egress doğrulama testinde** (bölüm 5, "Doğrulama zorunlu") Gitleaks
+çalıştırması sırasında da sıfır dış bağlantı gözlemlenerek ampirik olarak
+doğrulanacak.
+
+## 3. Gitleaks fingerprint kararsızlığı — KULLANICI KARARI GEREKİR
+
+**Doğrulanmış çatışma (bkz. VERIFIED_FACTS.md):** Gitleaks'in kendi
+fingerprint'i (`commitSHA:path:ruleID:line`) satır numarası değişince
+değişir. master_prompt.md 4.4 ise "fingerprint kararlı olmalı, satır
+kayınca yeni bulgu doğmasın" diyor.
+
+**Seçenekler (kullanıcı ile Aşama 3 tasarımında netleştirilecek):**
+- (a) Gitleaks fingerprint'ini olduğu gibi kullan, satır kayması = yeni
+  bulgu kabul et (basit ama gürültü riski: aynı secret'ın üstüne bir satır
+  eklenince "yeni" görünür).
+  (b) Kendi ikincil fingerprint'imizi hesapla: `rule ID + dosya yolu +
+  secret-content hash` (satırdan bağımsız) — Gitleaks'in orijinal
+  fingerprint'ini kanıt olarak sakla, dedup anahtarı olarak kendi
+  hesabımızı kullan.
+- (c) Hibrit: content-hash eşleşirse aynı bulgu kabul et, satır/commit
+  bilgisini sadece "son görülen konum" olarak güncelle.
+
+**Öneri:** (b) — master_prompt.md'nin kararlılık gereksinimini gerçekten
+karşılayan tek seçenek bu. Ama bu bir **ek parse/hash adımı** demek,
+yazılı gerekçeyle Aşama 3'te kullanıcıya sunulacak (kural 11).
+
+## 4. GraphQL batch sorgu point maliyeti (60 sn yoklama bütçesi)
+
+**Varsayım:** `repository(owner,name){defaultBranchRef{target{oid}}}`
+şeklinde çok-repo batch sorgusunun saatlik 5.000-12.500 point bütçesi
+içinde rahatça sığacağı varsayılıyor (bölüm 3.5.1).
+
+**Neden doğrulanamadı:** Resmi dokümanda alan-bazlı tam point maliyet
+tablosu yok (genel ilke var, kesin sayı yok).
+
+**Nasıl netleştirilir:** Aşama 1/2'de gerçek org ile ölçülüp
+`docs/PERF.md`'ye yazılacak; bütçe yetersizse bölüm 3.5.1'deki
+sıcak/soğuk katmanlama uygulanacak (kural 11: ölç, sonra optimize et).
+
+## 5. pom.xml / Maven: lockfile mi, manifest-only mi?
+
+**Karar (temkinli taraf):** `tools/inventory.py` pom.xml'i şu an
+`manifest_only` sayıyor (Verified olamaz, UNVERIFIED_NO_LOCKFILE).
+
+**Neden belirsiz:** OSV-Scanner resmi olarak pom.xml'i doğrudan
+okuyabiliyor (VERIFIED_FACTS.md madde 8), ama Maven'da sürüm aralıkları/
+property placeholder'ları yaygın ve gerçek transitive resolution normalde
+Maven'ın kendi resolver'ını (ve çoğunlukla Maven Central'a ağ erişimini)
+gerektirir. OSV-Scanner'ın pom.xml'den ürettiği "resolved version"ın
+şirketin **offline** ortamında ne kadar güvenilir olduğu doğrulanmadı.
+
+**Nasıl netleştirilir:** Aşama 0b fixture testinde gerçek bir Maven
+projesiyle `--offline` modda denenip çıkan sürümlerin doğruluğu elle
+kontrol edilecek; sonuca göre pom.xml lockfile sayılabilir veya
+`manifest_only` olarak kalır (kullanıcı onayı ile).
+
+## 6. pnpm-lock.yaml bileşen sayısı tahmini yok
+
+**Karar:** `tools/inventory.py`'de pnpm-lock.yaml ecosystem olarak
+**tespit ediliyor** (lockfile sinyali doğru) ama kaba bileşen sayısı
+**tahmin edilmiyor** çünkü Python stdlib'de YAML parser yok ve Aşama 0'da
+ek bağımlılık eklenmiyor (kural 11). Bu sadece envanter scriptinin
+"tahmini" özetini etkiler, ürünün gerçek eşleştirme motorunu (Aşama 2 Hat
+B, OSV-Scanner kendisi) etkilemez — OSV-Scanner pnpm-lock.yaml'ı zaten
+native destekliyor.
+
+## 7. GHES `/meta` endpoint IP aralığı davranışı
+
+**Varsayım:** Webhook modülü (Aşama 2b, koşullu) GHES üzerinde
+kullanılırsa, trafik şirket içi ağda kalacağı için GitHub.com'un dinamik
+IP aralığı sorunu daha az kritik olacağı varsayılıyor.
+
+**Neden doğrulanamadı:** GHES'in kendi `/meta` endpoint'inin davranışı
+(veya bu senaryoda hiç gerekip gerekmediği) ayrıca doğrulanmadı — bu
+yalnızca Aşama 2b onaylanırsa ve GHES kullanılıyorsa gündeme gelir.
+
+## 8. İlk admin GitHub kullanıcısının token/App kurulum detayları
+
+master_prompt.md §5 "GitHub erişimi" bölümündeki GitHub App minimum izin
+isimleri (Contents: Read-only, Metadata: Read-only, Dependabot alerts:
+Read-only) VERIFIED_FACTS.md'de doğrulandı; ancak **App'in organizasyona
+kurulumu (installation) adımının tam ekran akışı** ve **GHES'te App
+kaydının farklı bir admin onay akışı gerektirip gerektirmediği**
+doğrulanmadı — bu, Aşama 1'de gerçek bir test org'unda elle kurulum
+yapılırken netleşecek ve RUNBOOK.md'ye yazılacak.
+
+## 9. CVSS sayısal skor: OSV-Scanner çıktısında doğrudan yok
+
+**Bulgu (bkz. MATCHING_SPIKE.md §4):** OSV-Scanner JSON çıktısındaki
+`severity[].score` bir **CVSS vektör string**'i (`CVSS:3.1/AV:N/...`),
+sayısal taban skoru değil. `database_specific.severity` kaba bir etiket
+(LOW/MEDIUM/HIGH/CRITICAL) veriyor ama bu, master_prompt §1/§6'daki
+"CVSS≥7.0" eşiğini kesin temsil etmiyor (HIGH etiketi 7.0-8.9 aralığına
+karşılık gelir, kesin değer değil).
+
+**Nasıl netleştirilir:** Aşama 2'de CVSS v3.1 taban skor formülünü (kamuya
+açık, FIRST.org tarafından yayınlanır) uygulayan küçük, test edilmiş bir
+saf fonksiyon yazılacak veya olgun bir kütüphane kullanılacak (kural 3:
+sıfırdan skorlama motoru değil, tek formül). Kullanıcıya Aşama 2
+tasarımında hangi yaklaşımın seçildiği raporlanacak.
