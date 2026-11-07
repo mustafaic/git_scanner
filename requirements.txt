@@ -8,3 +8,5 @@ pydantic-settings==2.6.1
 PyJWT[crypto]==2.10.1
 httpx==0.27.2
 prometheus-client==0.21.1
+univers==32.0.1
+cvss==3.6

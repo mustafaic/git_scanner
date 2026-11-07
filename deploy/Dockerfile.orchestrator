@@ -11,6 +11,7 @@ COPY requirements.txt requirements-dev.txt ./
 RUN pip install --no-cache-dir -r requirements-dev.txt
 
 COPY core ./core
+COPY adapters ./adapters
 COPY orchestrator ./orchestrator
 COPY migrations ./migrations
 COPY alembic.ini ./alembic.ini

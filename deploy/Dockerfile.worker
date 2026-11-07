@@ -1,0 +1,30 @@
+# Worker: izole scanner calistirma ortami (master_prompt.md 5 "Worker
+# izolasyonu"). network_mode:none ile calisir (docker-compose.yml); bu
+# Dockerfile SADECE build-time indirme yapar (kural: imaj/bagimlilik
+# indirmeleri yalnizca build sirasinda, runtime'da paket yoneticisi yok).
+
+FROM python:3.12-slim AS downloader
+ARG OSV_SCANNER_VERSION=v2.7.0
+# PINLI + CHECKSUM DOGRULAMALI (bkz. docs/VERIFIED_FACTS.md): resmi
+# SHA256SUMS dosyasindan alindi (2026-11-08).
+ARG OSV_SCANNER_SHA256=160c6253e2922e9e0a6a9771c5c4c40a4b3c6090b34a3cdd5e80c96cc2e4218b
+WORKDIR /dl
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN curl -sL -o osv-scanner "https://github.com/google/osv-scanner/releases/download/${OSV_SCANNER_VERSION}/osv-scanner_linux_amd64" \
+    && echo "${OSV_SCANNER_SHA256}  osv-scanner" | sha256sum -c - \
+    && chmod +x osv-scanner
+
+FROM python:3.12-slim
+RUN groupadd -r worker && useradd -r -g worker -u 10001 worker
+WORKDIR /srv
+COPY --from=downloader /dl/osv-scanner /usr/local/bin/osv-scanner
+COPY adapters ./adapters
+COPY core ./core
+COPY worker ./worker
+RUN mkdir -p /staging /dbs && chown -R worker:worker /staging /srv
+USER worker
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+ENV OSV_SCANNER_BINARY=/usr/local/bin/osv-scanner
+ENV STAGING_DIR=/staging
+ENV DB_CACHE_DIR=/dbs
+CMD ["python", "-m", "worker.main"]

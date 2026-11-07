@@ -116,17 +116,25 @@ kaydının farklı bir admin onay akışı gerektirip gerektirmediği**
 doğrulanmadı — bu, Aşama 1'de gerçek bir test org'unda elle kurulum
 yapılırken netleşecek ve RUNBOOK.md'ye yazılacak.
 
-## 9. CVSS sayısal skor: OSV-Scanner çıktısında doğrudan yok
+## 10. Cargo (Rust) için univers Version sınıfı: SemverVersion fallback
 
-**Bulgu (bkz. MATCHING_SPIKE.md §4):** OSV-Scanner JSON çıktısındaki
-`severity[].score` bir **CVSS vektör string**'i (`CVSS:3.1/AV:N/...`),
-sayısal taban skoru değil. `database_specific.severity` kaba bir etiket
-(LOW/MEDIUM/HIGH/CRITICAL) veriyor ama bu, master_prompt §1/§6'daki
-"CVSS≥7.0" eşiğini kesin temsil etmiyor (HIGH etiketi 7.0-8.9 aralığına
-karşılık gelir, kesin değer değil).
+**Varsayım:** `univers` kütüphanesinde Cargo'ya özel bir Version sınıfı
+bulunamadı (bkz. VERIFIED_FACTS.md madde 6). `core/finding_model.py`
+Cargo/crates.io ekosistemi için `SemverVersion`'ı kullanıyor (Rust crates
+standart semver kullanır).
 
-**Nasıl netleştirilir:** Aşama 2'de CVSS v3.1 taban skor formülünü (kamuya
-açık, FIRST.org tarafından yayınlanır) uygulayan küçük, test edilmiş bir
-saf fonksiyon yazılacak veya olgun bir kütüphane kullanılacak (kural 3:
-sıfırdan skorlama motoru değil, tek formül). Kullanıcıya Aşama 2
-tasarımında hangi yaklaşımın seçildiği raporlanacak.
+**Nasıl netleştirilir:** Gerçek bir Cargo.lock fixture'ıyla (bilinen
+zafiyetli bir Rust crate) Aşama 2 fixture testlerinde doğrulanacak; semver
+karşılaştırması yanlış sonuç verirse `FIX_UNKNOWN` fallback'i zaten devrede
+(kural: güvenilir hesaplanamıyorsa öneri üretilmez).
+
+## 9. ~~CVSS sayısal skor: OSV-Scanner çıktısında doğrudan yok~~ — ÇÖZÜLDÜ
+
+**Çözüldü (2026-11-08):** `severity[].score` bir **CVSS vektör string**'i
+(`CVSS:3.1/AV:N/...`), sayısal taban skoru değil. Python `cvss` kütüphanesi
+(v3.6) bu vektörü doğrudan kabul ediyor ve taban skoru hesaplıyor (host'ta
+smoke-test edildi, bkz. VERIFIED_FACTS.md madde 7). `core/finding_model.py`
+bunu kullanıyor; parse edilemezse `database_specific.severity` kaba
+etiketine (LOW/MEDIUM/HIGH/CRITICAL) düşer ve bu durumu `severity_source`
+alanında işaretler.
+
