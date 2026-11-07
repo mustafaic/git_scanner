@@ -127,8 +127,9 @@ etiketi CVSS 7.0-8.9 aralığına denk gelir ama kesin değildir).
 
 ## 6. Öneri
 
-**S2 (lockfile blob → OSV-Scanner offline) birincil strateji olarak
-seçilsin.**
+**KULLANICI KARARI (2026-11-08): S2 ONAYLANDI.** S2 (lockfile blob →
+OSV-Scanner offline), master_prompt.md §3.3'teki eşleştirme stratejisi
+olarak seçildi.
 
 Gerekçe:
 1. Hat A zaten her repo için değişen lockfile blob'larını indiriyor

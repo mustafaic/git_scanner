@@ -28,7 +28,13 @@ bir beyan yok.
 çalıştırması sırasında da sıfır dış bağlantı gözlemlenerek ampirik olarak
 doğrulanacak.
 
-## 3. Gitleaks fingerprint kararsızlığı — KULLANICI KARARI GEREKİR
+## 3. Gitleaks fingerprint kararsızlığı — KARAR VERİLDİ (2026-11-08)
+
+**Kullanıcı kararı:** Seçenek (b) — kendi ikincil fingerprint'imizi
+hesaplayacağız: `rule ID + dosya yolu + secret-content hash` (satır
+numarasından bağımsız). Gitleaks'in orijinal (satır-bağımlı) fingerprint'i
+kanıt/referans olarak saklanacak ama dedup anahtarı olarak KULLANILMAYACAK.
+Bu, Aşama 3 (Secret + panel + auth) tasarımına girdi olarak işlenecek.
 
 **Doğrulanmış çatışma (bkz. VERIFIED_FACTS.md):** Gitleaks'in kendi
 fingerprint'i (`commitSHA:path:ruleID:line`) satır numarası değişince
