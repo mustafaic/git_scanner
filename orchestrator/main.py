@@ -40,7 +40,7 @@ from orchestrator.jobs import (
     enqueue_job,
     fail_job,
 )
-from orchestrator.sync import sync_repository_head
+from orchestrator.sync import EmptyRepositoryError, sync_repository_head
 
 LOG = logging.getLogger(__name__)
 
@@ -85,7 +85,12 @@ def _process_repo_sync_job(job: Job) -> None:
         repo = session.get(Repository, job.repo_id)
         if repo is None:
             raise RuntimeError(f"repositories tablosunda bulunamadi: repo_id={job.repo_id}")
-        sync_repository_head(settings.github_api_base_url, _auth, repo)
+        try:
+            sync_repository_head(settings.github_api_base_url, _auth, repo)
+        except EmptyRepositoryError:
+            # Gercek bir hata degil: repo'da henuz commit yok, retry'nin
+            # faydasi olmaz. last_seen_sha NULL kalir (dogru temsil).
+            LOG.info("Repo %s henuz commit icermiyor, atlaniyor", repo.full_name)
         complete_job(session, job.id)
 
 

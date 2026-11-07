@@ -24,6 +24,12 @@ SHA_MEDIA_TYPE = "application/vnd.github.sha"
 API_VERSION_HEADER = "2022-11-28"
 
 
+class EmptyRepositoryError(RuntimeError):
+    """Repo henuz hic commit icermiyor (GitHub bu durumda 409 doner -
+    gercek test org'unda gozlendi, bkz. docs/VERIFIED_FACTS.md).
+    Bu bir HATA degil, gecerli bir durumdur: retry etmenin faydasi yoktur."""
+
+
 def fetch_default_branch_head_sha(
     api_base_url: str,
     auth: GitHubAppAuth,
@@ -45,6 +51,10 @@ def fetch_default_branch_head_sha(
             "X-GitHub-Api-Version": API_VERSION_HEADER,
         },
     )
+    if response.status_code == 409:
+        # VERIFIED (2026-11-08, bkz. docs/VERIFIED_FACTS.md): GitHub bos
+        # repo'larda (hic commit yok) commits/{ref} icin 409 doner.
+        raise EmptyRepositoryError(f"{owner}/{repo} henuz commit icermiyor (HTTP 409)")
     if response.status_code != 200:
         raise RuntimeError(f"HEAD SHA alinamadi ({owner}/{repo}): HTTP {response.status_code}")
     return response.text.strip()

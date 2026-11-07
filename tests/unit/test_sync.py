@@ -8,7 +8,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from orchestrator.sync import fetch_default_branch_head_sha  # noqa: E402
+from orchestrator.sync import EmptyRepositoryError, fetch_default_branch_head_sha  # noqa: E402
 
 
 class _FakeAuth:
@@ -40,6 +40,19 @@ def test_fetch_head_sha_non_200_raises():
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
     with pytest.raises(RuntimeError):
+        fetch_default_branch_head_sha(
+            "https://api.github.com", _FakeAuth(), "acme", "widgets", "main", http_client=client
+        )
+
+
+def test_fetch_head_sha_409_raises_empty_repository_error():
+    # Gercek test org'unda gozlendi (bkz. docs/VERIFIED_FACTS.md): commit
+    # icermeyen repo'larda GitHub bu endpoint'te 409 doner.
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(409, json={"message": "Git Repository is empty."})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(EmptyRepositoryError):
         fetch_default_branch_head_sha(
             "https://api.github.com", _FakeAuth(), "acme", "widgets", "main", http_client=client
         )
