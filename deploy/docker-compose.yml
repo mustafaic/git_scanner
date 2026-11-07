@@ -1,0 +1,104 @@
+# Asama 1 iskeleti. Tam mimari (proxy, worker, egress-proxy, backup,
+# webhook-receiver) Asama 2/3/5'te eklenecek (master_prompt.md 3.4, 7).
+# Bilinen, belgelenmis Asama 1 sinirlamasi: orchestrator burada DOGRUDAN
+# internete cikar (egress-proxy henuz yok, bu Asama 2 kapsami); GitHub App
+# kimligi konfigure edilmezse discovery/sync devre disi kalir ve servis
+# sadece iskelet/healthcheck modunda calisir.
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-scanner}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-scanner_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-scanner}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-scanner}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [backend]
+
+  migrate:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.orchestrator
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-scanner}:${POSTGRES_PASSWORD:-scanner_dev_password}@postgres:5432/${POSTGRES_DB:-scanner}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [backend]
+
+  orchestrator:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.orchestrator
+    environment:
+      SERVICE_NAME: orchestrator
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-scanner}:${POSTGRES_PASSWORD:-scanner_dev_password}@postgres:5432/${POSTGRES_DB:-scanner}
+      GITHUB_API_BASE_URL: ${GITHUB_API_BASE_URL:-https://api.github.com}
+      GITHUB_APP_ID: ${GITHUB_APP_ID:-}
+      GITHUB_APP_INSTALLATION_ID: ${GITHUB_APP_INSTALLATION_ID:-}
+      GITHUB_APP_PRIVATE_KEY_PATH: ${GITHUB_APP_PRIVATE_KEY_PATH:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      POLL_INTERVAL_SECONDS: ${POLL_INTERVAL_SECONDS:-60}
+    volumes:
+      - ./secrets:/run/secrets:ro
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8080/healthz', timeout=3).status==200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [backend]
+
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.app
+    environment:
+      SERVICE_NAME: app
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-scanner}:${POSTGRES_PASSWORD:-scanner_dev_password}@postgres:5432/${POSTGRES_DB:-scanner}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "8081:8081"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8081/healthz', timeout=3).status==200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [backend]
+
+  watchdog:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.watchdog
+    environment:
+      SERVICE_NAME: watchdog
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-scanner}:${POSTGRES_PASSWORD:-scanner_dev_password}@postgres:5432/${POSTGRES_DB:-scanner}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      HEARTBEAT_URL: ${HEARTBEAT_URL:-}
+      HEARTBEAT_STALE_THRESHOLD_SECONDS: ${HEARTBEAT_STALE_THRESHOLD_SECONDS:-1800}
+      WATCHDOG_CHECK_INTERVAL_SECONDS: ${WATCHDOG_CHECK_INTERVAL_SECONDS:-60}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    networks: [backend]
+
+volumes:
+  postgres_data:
+
+networks:
+  backend:

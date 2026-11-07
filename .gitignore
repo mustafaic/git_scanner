@@ -1,14 +1,18 @@
 # Secrets and env
 .env
 .env.*
+!.env.example
+!**/.env.example
 *.pem
 *.key
-secrets/
+deploy/secrets/*
+!deploy/secrets/README.md
 
 # Python
 __pycache__/
 *.pyc
 .venv/
+.venv312compat/
 venv/
 *.egg-info/
 

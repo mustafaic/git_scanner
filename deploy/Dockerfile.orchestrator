@@ -1,0 +1,20 @@
+# NOT: requirements-dev.txt (pytest dahil) kasitli olarak imaja dahil -
+# Asama 1'de "docker compose run orchestrator pytest ..." ile testler ayni
+# imajda calisiyor. Asama 5'te (minimal base imaj, kendi tedarik zincirimiz)
+# prod/test imajlari ayristirilacak.
+FROM python:3.12-slim
+
+WORKDIR /srv
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+
+COPY requirements.txt requirements-dev.txt ./
+RUN pip install --no-cache-dir -r requirements-dev.txt
+
+COPY core ./core
+COPY orchestrator ./orchestrator
+COPY migrations ./migrations
+COPY alembic.ini ./alembic.ini
+COPY tests ./tests
+
+EXPOSE 8080
+CMD ["uvicorn", "orchestrator.main:app", "--host", "0.0.0.0", "--port", "8080"]

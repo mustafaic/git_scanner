@@ -54,6 +54,16 @@ Doğrulama tarihi (hepsi için): **2026-11-08**.
 
 ---
 
+## GitHub App auth / discovery (Aşama 1 için doğrulandı, 2026-11-08)
+
+| # | İddia | Durum | Kaynak |
+|---|---|---|---|
+| 1 | JWT zorunlu alanlar: `iss` (App ID veya Client ID), `iat`, `exp`, header `alg: RS256`. Maksimum `exp` penceresi **şu andan 10 dakika** ileri. Saat kayması için önerilen: `iat`'ı **60 saniye geçmişe** ayarla. | **VERIFIED** | https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-json-web-token-jwt-for-a-github-app |
+| 2 | JWT ile çağrıda `Authorization: Bearer <jwt>` kullanılır. | **VERIFIED** | aynı kaynak |
+| 3 | `POST /app/installations/{installation_id}/access_tokens` — JWT ile çağrılır, installation access token döner; token **1 saat sonra expire olur**; `permissions` belirtilmezse App'e tanınan tüm izinler token'a geçer (App'in izin kümesini aşamaz). | **VERIFIED** | https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/ |
+| 4 | `GET /installation/repositories` — **installation access token** ile (JWT ile DEĞİL) çağrılır; yanıt `{total_count, repositories[], repository_selection}`; `per_page` (max 100, varsayılan 30), `page` ile sayfalanır. | **VERIFIED** | https://docs.github.com/en/rest/apps/installations |
+| 5 | `X-GitHub-Api-Version` header değeri: kararlı/sabit sürüm string'i `2022-11-28` (GitHub REST API versiyonlama şeması nadiren değişir; bir dokümantasyon sayfasında dinamik/o-günkü tarih gösterimi görüldü ama bu muhtemelen sayfanın örnek-render kusuru, resmi versiyonlama dokümanında `2022-11-28` güncel sürüm olarak teyit edilmişti — bkz. yukarıdaki GitHub API tablosu madde 8). | **VERIFIED (ana tabloyla çapraz kontrol)** | https://docs.github.com/en/rest/about-the-rest-api/api-versions |
+
 ## Özet — tasarım üzerindeki etkiler
 
 1. **OSV-Scanner her zaman `--offline` + önceden indirilmiş DB ile çalıştırılmalı.** Varsayılan davranışa güvenilemez; worker'ın `network_mode: none` olması ikinci güvence katmanı olarak zaten planlanmıştı, bu bulgu onu daha da kritik hale getiriyor.
