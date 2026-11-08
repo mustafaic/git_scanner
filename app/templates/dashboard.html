@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}Dashboard{% endblock %}
+{% block title %}Bugün{% endblock %}
 {% block content %}
-<h2>Özet</h2>
+<h2>Bugün</h2>
 <div class="stat-grid">
   <div class="stat"><div class="n">{{ open_findings }}</div><div class="l">Açık SCA bulgusu</div></div>
   <div class="stat"><div class="n">{{ kev_findings }}</div><div class="l">KEV (aktif sömürülen)</div></div>
@@ -10,6 +10,37 @@
   <div class="stat"><div class="n">{{ overdue_findings }}</div><div class="l">SLA'sı geçmiş bulgu (<a href="/findings">listeye git</a>)</div></div>
   <div class="stat"><div class="n">{{ active_repos }}</div><div class="l">Aktif repo</div></div>
   <div class="stat"><div class="n">{{ pending_jobs }}</div><div class="l">Bekleyen iş</div></div>
+</div>
+
+<div class="card">
+  <h3>Bugün yapılacaklar</h3>
+  <form method="get" action="/" style="margin-bottom:0.75rem;">
+    <label for="owner">Sahip/ekip filtresi</label>
+    <select name="owner" id="owner" onchange="this.form.submit()" style="max-width:220px;">
+      <option value="" {% if not owner_filter %}selected{% endif %}>Tümü</option>
+      {% for o in all_owners %}
+      <option value="{{ o }}" {% if owner_filter == o %}selected{% endif %}>{{ o }}</option>
+      {% endfor %}
+    </select>
+  </form>
+  <table>
+    <thead><tr><th></th><th>Repo</th><th>Paket</th><th>Zafiyet</th><th>CVSS</th><th>KEV</th><th>Durum</th></tr></thead>
+    <tbody>
+      {% for f in action_findings %}
+      <tr>
+        <td>{% if f.id in new_ids %}<span class="badge badge-OPEN">YENİ</span>{% endif %}</td>
+        <td>{{ action_repo_names.get(f.repo_id, f.repo_id) }}</td>
+        <td><a href="/findings/{{ f.id }}">{{ f.package_name }} {{ f.version }}</a></td>
+        <td>{{ f.canonical_vulnerability_id }}</td>
+        <td>{{ f.severity_cvss_score if f.severity_cvss_score is not none else "-" }}</td>
+        <td>{% if f.kev %}⚠️{% endif %}</td>
+        <td><span class="badge badge-{{ f.lifecycle_status }}">{{ f.lifecycle_status }}</span></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7">Bugün için aksiyon gereken bir şey yok.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
 </div>
 
 <div class="card">

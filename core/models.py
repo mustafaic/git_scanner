@@ -372,6 +372,10 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     failed_login_attempts: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0)
     locked_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # A6 "Bugun" ekrani (master_prompt.md 6): "son ziyaretinden beri yeni
+    # olanlar rozetle". NULL = henuz hic ziyaret yok -> hicbir sey "yeni"
+    # sayilmaz (ilk ziyarette tum gecmis bulgular yanlislikla yeni gorunmesin).
+    last_dashboard_visit_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

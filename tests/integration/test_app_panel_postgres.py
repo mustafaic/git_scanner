@@ -940,3 +940,93 @@ def test_blast_radius_shows_owner_column(client, engine):
     resp = client.get("/blast-radius", params={"q": "left-pad-owner-test"})
     assert resp.status_code == 200
     assert "team-platform" in resp.text
+
+
+# --- Stage 4 part 5: A6 "Bugun" ekrani -------------------------------------
+
+def test_dashboard_first_visit_shows_no_new_badge_and_sets_last_visit(client, engine):
+    """Ilk ziyarette (last_dashboard_visit_at NULL) hicbir bulgu 'YENI'
+    rozeti ALMAMALI -- aksi halde tum gecmis bulgular yanlislikla yeni
+    gorunur (master_prompt.md 6 A6)."""
+    admin_id, secret = _make_admin(engine)
+    from sqlalchemy.orm import sessionmaker
+
+    Session = sessionmaker(bind=engine, future=True)
+    with Session() as session:
+        session.add(Repository(github_repo_id=60, full_name="acme/today-check", owner="acme", name="today-check", default_branch="main", visibility="private"))
+        session.add(Finding(
+            repo_id=60, lockfile_path="package-lock.json", ecosystem="npm", package_name="lodash",
+            version="4.17.15", canonical_vulnerability_id="GHSA-today-1", verification_status="VERIFIED",
+            lifecycle_status="OPEN", kev=True,
+        ))
+        session.commit()
+
+    code = pyotp.TOTP(secret).now()
+    _login(client, "admin", ADMIN_PASSWORD, code)
+
+    with engine.begin() as conn:
+        before = conn.execute(text("SELECT last_dashboard_visit_at FROM users WHERE id=:i"), {"i": admin_id}).scalar_one()
+    assert before is None
+
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert "GHSA-today-1" in resp.text
+    assert "YENİ" not in resp.text
+
+    with engine.begin() as conn:
+        after = conn.execute(text("SELECT last_dashboard_visit_at FROM users WHERE id=:i"), {"i": admin_id}).scalar_one()
+    assert after is not None
+
+
+def test_dashboard_shows_new_badge_for_finding_created_after_last_visit(client, engine):
+    admin_id, secret = _make_admin(engine)
+    code = pyotp.TOTP(secret).now()
+    _login(client, "admin", ADMIN_PASSWORD, code)
+    client.get("/")  # ilk ziyaret -- last_dashboard_visit_at artik set
+
+    from sqlalchemy.orm import sessionmaker
+
+    Session = sessionmaker(bind=engine, future=True)
+    with Session() as session:
+        session.add(Repository(github_repo_id=61, full_name="acme/today-check-2", owner="acme", name="today-check-2", default_branch="main", visibility="private"))
+        session.add(Finding(
+            repo_id=61, lockfile_path="package-lock.json", ecosystem="npm", package_name="lodash",
+            version="4.17.15", canonical_vulnerability_id="GHSA-today-2", verification_status="VERIFIED",
+            lifecycle_status="OPEN", kev=True,
+        ))
+        session.commit()
+
+    resp2 = client.get("/")
+    assert "GHSA-today-2" in resp2.text
+    assert "YENİ" in resp2.text
+
+
+def test_dashboard_owner_filter_shows_only_owned_repo_findings(client, engine):
+    _, secret = _make_admin(engine)
+    from sqlalchemy.orm import sessionmaker
+
+    Session = sessionmaker(bind=engine, future=True)
+    with Session() as session:
+        session.add_all([
+            Repository(github_repo_id=62, full_name="acme/team-a-repo", owner="acme", name="team-a-repo", default_branch="main", visibility="private"),
+            Repository(github_repo_id=63, full_name="acme/team-b-repo", owner="acme", name="team-b-repo", default_branch="main", visibility="private"),
+        ])
+        session.add_all([
+            Finding(repo_id=62, lockfile_path="x", ecosystem="npm", package_name="pkg-a", version="1.0.0",
+                    canonical_vulnerability_id="GHSA-team-a", verification_status="VERIFIED", lifecycle_status="OPEN"),
+            Finding(repo_id=63, lockfile_path="x", ecosystem="npm", package_name="pkg-b", version="1.0.0",
+                    canonical_vulnerability_id="GHSA-team-b", verification_status="VERIFIED", lifecycle_status="OPEN"),
+        ])
+        session.commit()
+
+    code = pyotp.TOTP(secret).now()
+    _login(client, "admin", ADMIN_PASSWORD, code)
+    csrf = _csrf_token(client)
+    client.post(
+        "/owners/import", files={"file": ("owners.csv", b"acme/team-a-repo,team-a\nacme/team-b-repo,team-b\n", "text/csv")},
+        data={"csrf_token": csrf},
+    )
+
+    resp = client.get("/", params={"owner": "team-a"})
+    assert "GHSA-team-a" in resp.text
+    assert "GHSA-team-b" not in resp.text
