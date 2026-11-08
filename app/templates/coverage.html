@@ -106,6 +106,20 @@
 </div>
 
 <div class="card">
+  <h3>Sahipsiz repolar <a href="/owners" style="font-size:0.75rem;">(sahip ata)</a></h3>
+  <table>
+    <thead><tr><th>Repo</th></tr></thead>
+    <tbody>
+      {% for r in unowned_active %}
+      <tr><td>{{ r.full_name }}</td></tr>
+      {% else %}
+      <tr><td>Yok -- tüm aktif repoların sahibi var.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
   <h3>Bilinen kör noktalar</h3>
   <ul style="font-size:0.85rem; color:#444;">
     <li>Sadece default branch taranır; diğer dallardaki zafiyetler/secret'lar görünmez.</li>

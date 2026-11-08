@@ -18,6 +18,7 @@ from starlette.requests import Request
 
 from app.deps import get_db, get_repo_names, render_page, require_user
 from core.models import Repository, ScanRun, ScanTrigger, User
+from core.owners import list_unowned_repo_ids
 
 router = APIRouter()
 
@@ -68,8 +69,14 @@ def coverage(request: Request, db: DbSession = Depends(get_db), user: User = Dep
 
     archived_or_fork = [r for r in repos if r.archived or r.fork]
 
+    # A5 "sahipsiz" listesi (master_prompt.md 6) -- is_active repolarla sinirli,
+    # arsiv/fork repolar icin sahip beklenmez (coverage gurultusu olmasin).
+    unowned_ids = set(list_unowned_repo_ids(db))
+    unowned_active = [r for r in repos if r.is_active and not r.archived and not r.fork and r.github_repo_id in unowned_ids]
+
     repo_ids = {run.repo_id for run in (lockfile_less + partial_or_failed)} | {r.github_repo_id for r in never_scanned}
     repo_ids |= {t.repo_id for t in lagging_triggers} | {r.github_repo_id for r in archived_or_fork}
+    repo_ids |= {r.github_repo_id for r in unowned_active}
     repo_names = get_repo_names(db, list(repo_ids))
 
     return render_page(
@@ -77,7 +84,7 @@ def coverage(request: Request, db: DbSession = Depends(get_db), user: User = Dep
         {
             "lockfile_less": lockfile_less, "partial_or_failed": partial_or_failed,
             "stale": stale, "never_scanned": never_scanned, "lagging_triggers": lagging_triggers,
-            "archived_or_fork": archived_or_fork, "repo_names": repo_names,
+            "archived_or_fork": archived_or_fork, "unowned_active": unowned_active, "repo_names": repo_names,
             "stale_days_threshold": STALE_DAYS_THRESHOLD, "stale_trigger_minutes": STALE_TRIGGER_MINUTES,
         },
         user=user,

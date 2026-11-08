@@ -51,7 +51,7 @@ def _clean(engine):
         for table in (
             "secret_finding_events", "secret_findings", "finding_events", "finding_sources", "findings",
             "api_tokens", "audit_log", "sessions", "users", "repositories", "scan_triggers", "scan_runs",
-            "notification_log", "settings",
+            "notification_log", "settings", "repo_owners",
         ):
             conn.execute(text(f"DELETE FROM {table}"))
     yield
@@ -437,6 +437,12 @@ def test_viewer_can_only_reach_own_token_write_endpoints_all_other_writes_blocke
     assert users_resp.status_code == 403
     settings_resp = client.get("/settings")
     assert settings_resp.status_code == 403
+    owners_resp = client.get("/owners")
+    assert owners_resp.status_code == 403
+    owners_import_resp = client.post(
+        "/owners/import", files={"file": ("x.csv", b"acme/x,team-a", "text/csv")}, data={"csrf_token": csrf},
+    )
+    assert owners_import_resp.status_code == 403
 
     # TEK istisna (kullanici karari): kendi read-only API token'ini yonetmek.
     token_resp = client.post("/tokens", data={"name": "viewer-own-token", "expires_in_days": "", "csrf_token": csrf})
@@ -825,3 +831,112 @@ def test_findings_list_shows_overdue_sla_badge_with_custom_settings(client, engi
 
     detail_resp = client.get(f"/findings/{finding_id}")
     assert "gün gecikmiş" in detail_resp.text
+
+
+# --- Stage 4 part 4: A5 sahip yonlendirme (CSV import) ----------------------
+
+def test_owners_csv_import_maps_known_repo_and_flags_unknown(client, engine):
+    _, secret = _make_admin(engine)
+    from sqlalchemy.orm import sessionmaker
+
+    Session = sessionmaker(bind=engine, future=True)
+    with Session() as session:
+        session.add(Repository(github_repo_id=50, full_name="acme/owned-repo", owner="acme", name="owned-repo", default_branch="main", visibility="private"))
+        session.commit()
+
+    code = pyotp.TOTP(secret).now()
+    _login(client, "admin", ADMIN_PASSWORD, code)
+    csrf = _csrf_token(client)
+
+    csv_content = b"acme/owned-repo,team-platform\nacme/does-not-exist,team-ghost\n"
+    resp = client.post("/owners/import", files={"file": ("owners.csv", csv_content, "text/csv")}, data={"csrf_token": csrf})
+    assert resp.status_code == 200
+    assert "İçe aktarıldı: 1" in resp.text
+    assert "bilinmeyen repo: 1" in resp.text
+
+    with engine.begin() as conn:
+        owner = conn.execute(text("SELECT owner_identifier, source FROM repo_owners WHERE repo_id=50")).one()
+        action = conn.execute(text("SELECT action FROM audit_log WHERE action='owners_csv_imported'")).scalar_one()
+    assert owner == ("team-platform", "csv")
+    assert action == "owners_csv_imported"
+
+
+def test_owners_csv_reimport_is_idempotent_no_duplicate_rows(client, engine):
+    _, secret = _make_admin(engine)
+    from sqlalchemy.orm import sessionmaker
+
+    Session = sessionmaker(bind=engine, future=True)
+    with Session() as session:
+        session.add(Repository(github_repo_id=51, full_name="acme/dup-check", owner="acme", name="dup-check", default_branch="main", visibility="private"))
+        session.commit()
+
+    code = pyotp.TOTP(secret).now()
+    _login(client, "admin", ADMIN_PASSWORD, code)
+    csrf = _csrf_token(client)
+    csv_content = b"acme/dup-check,team-platform\n"
+
+    client.post("/owners/import", files={"file": ("owners.csv", csv_content, "text/csv")}, data={"csrf_token": csrf})
+    resp2 = client.post("/owners/import", files={"file": ("owners.csv", csv_content, "text/csv")}, data={"csrf_token": csrf})
+    assert "zaten vardı: 1" in resp2.text
+
+    with engine.begin() as conn:
+        count = conn.execute(text("SELECT count(*) FROM repo_owners WHERE repo_id=51")).scalar_one()
+    assert count == 1
+
+
+def test_coverage_shows_unowned_repo_until_owner_imported(client, engine):
+    """NOT: repo icin basarili bir extraction ScanRun'i de eklenir --
+    aksi halde repo ayrica 'hic taranmamis' bolumunde de gorunur ve test
+    sadece 'sahipsiz' sinyalini izole edemez."""
+    _, secret = _make_admin(engine)
+    from sqlalchemy.orm import sessionmaker
+
+    Session = sessionmaker(bind=engine, future=True)
+    with Session() as session:
+        session.add(Repository(github_repo_id=52, full_name="acme/needs-owner", owner="acme", name="needs-owner", default_branch="main", visibility="private"))
+        session.add(ScanRun(
+            run_type="extraction", repo_id=52, status="success",
+            details={"files": [{"path": "package-lock.json", "status": "parsed"}]},
+        ))
+        session.commit()
+
+    code = pyotp.TOTP(secret).now()
+    _login(client, "admin", ADMIN_PASSWORD, code)
+    csrf = _csrf_token(client)
+
+    resp = client.get("/coverage")
+    assert "acme/needs-owner" in resp.text
+
+    client.post(
+        "/owners/import", files={"file": ("owners.csv", b"acme/needs-owner,team-platform\n", "text/csv")},
+        data={"csrf_token": csrf},
+    )
+    resp2 = client.get("/coverage")
+    assert "acme/needs-owner" not in resp2.text
+
+
+def test_blast_radius_shows_owner_column(client, engine):
+    _, secret = _make_admin(engine)
+    from sqlalchemy.orm import sessionmaker
+
+    Session = sessionmaker(bind=engine, future=True)
+    with Session() as session:
+        session.add(Repository(github_repo_id=53, full_name="acme/owner-blast", owner="acme", name="owner-blast", default_branch="main", visibility="private"))
+        session.add(Finding(
+            repo_id=53, lockfile_path="package-lock.json", ecosystem="npm", package_name="left-pad-owner-test",
+            version="1.0.0", canonical_vulnerability_id="GHSA-owner-1", verification_status="VERIFIED",
+            lifecycle_status="OPEN",
+        ))
+        session.commit()
+
+    code = pyotp.TOTP(secret).now()
+    _login(client, "admin", ADMIN_PASSWORD, code)
+    csrf = _csrf_token(client)
+    client.post(
+        "/owners/import", files={"file": ("owners.csv", b"acme/owner-blast,team-platform\n", "text/csv")},
+        data={"csrf_token": csrf},
+    )
+
+    resp = client.get("/blast-radius", params={"q": "left-pad-owner-test"})
+    assert resp.status_code == 200
+    assert "team-platform" in resp.text

@@ -529,6 +529,28 @@ class Setting(Base):
     updated_by_user_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
 
 
+class RepoOwner(Base):
+    """A5 sahip yonlendirme (master_prompt.md 6): bir repo BIRDEN FAZLA
+    sahibe (takim/kisi) sahip olabilir. `source`: 'csv' (admin ice aktardi),
+    'manual' (panelden tek tek eklendi -- henuz UI yok), 'codeowners'
+    (otomatik tespit -- henuz uygulanmadi, bkz. docs/ASSUMPTIONS.md).
+    Bir repo icin repo_owners satiri YOKSA 'sahipsiz' sayilir (A3 Coverage)."""
+
+    __tablename__ = "repo_owners"
+    __table_args__ = (
+        UniqueConstraint("repo_id", "owner_identifier", "source", name="uq_repo_owners_repo_identifier_source"),
+        CheckConstraint("source in ('csv', 'manual', 'codeowners')", name="repo_owners_source_check"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    repo_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    owner_identifier: Mapped[str] = mapped_column(String(300), nullable=False)
+    source: Mapped[str] = mapped_column(String(20), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class NotificationLog(Base):
     """master_prompt.md 6 "Gurultu kontrolleri": ayni olay/alici/kanal
     ucluzu BIR KEZ gonderilir -- uq_notification_log_dedup bunu DB

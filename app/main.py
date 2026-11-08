@@ -28,6 +28,7 @@ from app import (
     routes_dashboard,
     routes_export,
     routes_findings,
+    routes_owners,
     routes_repos,
     routes_secrets,
     routes_settings,
@@ -65,6 +66,7 @@ app.include_router(routes_actions.router)
 app.include_router(routes_coverage.router)
 app.include_router(routes_users.router)
 app.include_router(routes_settings.router)
+app.include_router(routes_owners.router)
 app.include_router(api.router)
 
 

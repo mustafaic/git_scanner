@@ -15,6 +15,7 @@ from starlette.requests import Request
 from app.deps import get_db, render_page, require_user
 from core.lockfile_parser import build_install_hint
 from core.models import Finding, Repository, User
+from core.owners import get_owners_map
 
 router = APIRouter()
 
@@ -71,7 +72,11 @@ def blast_radius(
             .order_by(Finding.lifecycle_status, Finding.repo_id)
             .limit(500)
         ).all()
-        results = [{"finding": f, "repo_name": name or f.repo_id} for f, name in rows]
+        owners_map = get_owners_map(db, [f.repo_id for f, _ in rows])
+        results = [
+            {"finding": f, "repo_name": name or f.repo_id, "owners": owners_map.get(f.repo_id, [])}
+            for f, name in rows
+        ]
 
     affected_repo_count = len({r["finding"].repo_id for r in results})
     return render_page(

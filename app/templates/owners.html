@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Sahip Eşlemesi{% endblock %}
+{% block content %}
+<h2>Sahip Eşlemesi (A5)</h2>
+<p style="color:#666; font-size:0.85rem;">CODEOWNERS otomatik tespiti henüz yok -- repo→ekip/kişi eşlemesi CSV ile içe aktarılır. Format: <code>repo_full_name,owner_identifier</code> (başlık satırı opsiyonel).</p>
+
+{% if result %}
+<div class="flash flash-ok">
+  İçe aktarıldı: {{ result.imported }}, zaten vardı: {{ result.duplicate }}, bilinmeyen repo: {{ result.unknown_repo }}.
+  {% if parse_errors %}<br>Atlanan satırlar: {{ parse_errors | join("; ") }}{% endif %}
+</div>
+{% endif %}
+
+<div class="card">
+  <h3>CSV içe aktar</h3>
+  <form method="post" action="/owners/import" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="file" name="file" accept=".csv,text/csv" required>
+    <p><button class="btn btn-primary" type="submit">İçe aktar</button></p>
+  </form>
+</div>
+
+<table>
+  <thead><tr><th>Repo</th><th>Sahip</th><th>Kaynak</th></tr></thead>
+  <tbody>
+    {% for m in mappings %}
+    <tr><td>{{ m.repo_name }}</td><td>{{ m.owner }}</td><td>{{ m.source }}</td></tr>
+    {% else %}
+    <tr><td colspan="3">Henüz sahip eşlemesi yok.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
