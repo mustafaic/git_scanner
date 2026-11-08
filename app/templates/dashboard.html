@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<h2>Özet</h2>
+<div class="stat-grid">
+  <div class="stat"><div class="n">{{ open_findings }}</div><div class="l">Açık SCA bulgusu</div></div>
+  <div class="stat"><div class="n">{{ kev_findings }}</div><div class="l">KEV (aktif sömürülen)</div></div>
+  <div class="stat"><div class="n">{{ needs_review }}</div><div class="l">İnceleme gerektiren</div></div>
+  <div class="stat"><div class="n">{{ open_secrets }}</div><div class="l">Açık secret bulgusu</div></div>
+  <div class="stat"><div class="n">{{ active_repos }}</div><div class="l">Aktif repo</div></div>
+  <div class="stat"><div class="n">{{ pending_jobs }}</div><div class="l">Bekleyen iş</div></div>
+</div>
+
+<div class="card">
+  <h3>Sistem sağlığı (heartbeat)</h3>
+  <table>
+    <thead><tr><th>Bileşen</th><th>Son başarıdan geçen süre</th></tr></thead>
+    <tbody>
+      {% for h in heartbeat_rows %}
+      <tr><td>{{ h.component }}</td><td>{{ h.age_seconds }} sn</td></tr>
+      {% else %}
+      <tr><td colspan="2">Henüz heartbeat kaydı yok.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h3>Advisory DB tazeliği</h3>
+  <table>
+    <thead><tr><th>Kaynak</th><th>Son başarılı senkrondan geçen süre</th></tr></thead>
+    <tbody>
+      {% for m in mirror_sync_rows %}
+      <tr><td>{{ m.source }}</td><td>{{ m.age_seconds }} sn</td></tr>
+      {% else %}
+      <tr><td colspan="2">Henüz senkron kaydı yok.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p style="color:#666; font-size:0.8rem;">Taze olmayan advisory DB hiçbir bulguyu RESOLVED yapamaz (master_prompt.md 4.6).</p>
+</div>
+{% endblock %}

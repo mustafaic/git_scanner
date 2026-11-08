@@ -39,6 +39,66 @@ services:
         condition: service_healthy
     networks: [backend]
 
+  # postgres-test / migrate-test: entegrasyon testleri (tests/integration/test_*_postgres.py)
+  # ICIN AYRI ve GECICI bir veritabani. Canli `postgres` servisinden kasitli
+  # olarak izole: tmpfs veri dizini sayesinde her "docker compose up" ile
+  # SIFIRLANIR. Bir test calistirmasinin `DELETE FROM repositories` gibi
+  # yikici fixture'lari YANLISLIKLA canli discovery/bulgu verisini silmesin
+  # diye eklendi (bkz. 2026-11-08 canli veri kaybi olayi). Entegrasyon
+  # testleri `DATABASE_URL`'i BU servise isaret edecek sekilde CALISTIRILMALI,
+  # asla varsayilan (canli) DATABASE_URL ile degil.
+  postgres-test:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-scanner}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-scanner_dev_password}
+      POSTGRES_DB: scanner_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-scanner}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [backend]
+
+  migrate-test:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.orchestrator
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-scanner}:${POSTGRES_PASSWORD:-scanner_dev_password}@postgres-test:5432/scanner_test
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+    networks: [backend]
+
+  # test-runner: tum pytest calistirmalari BUNUNLA yapilmali (asla `orchestrator`
+  # servisiyle, o canli DATABASE_URL'e baglidir). Ornek:
+  #   docker compose -f deploy/docker-compose.yml --env-file deploy/.env \
+  #     run --rm test-runner pytest tests/ -q
+  test-runner:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.orchestrator
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-scanner}:${POSTGRES_PASSWORD:-scanner_dev_password}@postgres-test:5432/scanner_test
+      STAGING_DIR: /staging
+      DB_CACHE_DIR: /dbs
+      GIT_MIRRORS_DIR: /mirrors
+      # TestClient/httpx testleri http:// uzerinden calisir -- Secure
+      # cookie http.cookiejar tarafindan GERI GONDERILMEZ, bu yuzden test
+      # ortaminda kapatilir (bkz. app/main.py, core/config.py).
+      SESSION_COOKIE_SECURE: "false"
+    volumes:
+      - staging-test:/staging
+      - git_mirrors_test:/mirrors
+    depends_on:
+      migrate-test:
+        condition: service_completed_successfully
+    networks: [backend]
+
   orchestrator:
     build:
       context: ..
@@ -55,12 +115,14 @@ services:
       DEBOUNCE_WINDOW_SECONDS: ${DEBOUNCE_WINDOW_SECONDS:-20}
       STAGING_DIR: /staging
       DB_CACHE_DIR: /dbs
+      GIT_MIRRORS_DIR: /mirrors
       DAILY_JOBS_INTERVAL_HOURS: ${DAILY_JOBS_INTERVAL_HOURS:-24}
       ADVISORY_MAX_AGE_SECONDS: ${ADVISORY_MAX_AGE_SECONDS:-172800}
     volumes:
       - ./secrets:/run/secrets:ro
       - staging:/staging
       - osv_db_cache:/dbs
+      - git_mirrors:/mirrors
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -86,6 +148,7 @@ services:
     volumes:
       - staging:/staging
       - osv_db_cache:/dbs:ro
+      - git_mirrors:/mirrors:ro
     environment:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     restart: unless-stopped
@@ -98,6 +161,11 @@ services:
       SERVICE_NAME: app
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-scanner}:${POSTGRES_PASSWORD:-scanner_dev_password}@postgres:5432/${POSTGRES_DB:-scanner}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # Varsayilan true (master_prompt.md 5: "Oturum cerezi ... Secure").
+      # Yerel docker-compose dev ortami duz HTTP sundugu icin (TLS
+      # terminasyonu Asama 5 kapsami) false'a cekilebilir -- bilinen/
+      # belgelenmis sinirlama, PROD'DA DAIMA true (TLS'in ardinda) olmali.
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -131,6 +199,9 @@ volumes:
   postgres_data:
   staging:
   osv_db_cache:
+  git_mirrors:
+  staging-test:
+  git_mirrors_test:
 
 networks:
   backend:

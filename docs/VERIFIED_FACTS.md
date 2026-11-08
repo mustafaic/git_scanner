@@ -78,6 +78,18 @@ Doğrulama tarihi (hepsi için): **2026-11-08**.
 | 8 | Go sürümleri: OSV-Scanner çıktısında Go paket sürümü **"v" ÖNEKİ OLMADAN** raporlanır (`"1.6.3"`), ama `core/lockfile_parser.py` (go.mod'dan okurken) **"v" önekini korur** (`"v1.6.3"`). Hat A/B korelasyonunda normalize edilmesi gerekiyor (bkz. `core/finding_model.py`). | **AMPİRİK DOĞRULANDI** (golden fixture karşılaştırması) | — |
 | 9 | Worker izolasyonu (network_mode:none, read-only rootfs, cap-drop ALL, non-root) **gerçek container'da test edildi**: dosya-tabanlı job protokolü (job.json → done) çalıştı, DB'yi read-only mount'tan yükledi, doğru sonucu üretti; container içinden gerçek bir ağ bağlantısı denemesi `OSError: Network is unreachable` ile başarısız oldu (route tablosu da boş). | **AMPİRİK DOĞRULANDI** (gerçek Docker container, gerçek ağ denemesi) | — |
 
+## Aşama 3: Gitleaks CLI (ampirik + resmi doğrulama, 2026-11-08)
+
+| # | İddia | Durum | Kaynak |
+|---|---|---|---|
+| 1 | `gitleaks git [flags] [repo]` — repo yolu **pozitif argümandır**, `--repo-path` diye bir flag **YOKTUR**. Yanlış flag verilince exit **126** ("unknown flag"). | **AMPİRİK DOĞRULANDI** (gerçek binary v8.30.1 ile, yanlış flag denendi) | — |
+| 2 | Exit kodları: **0** = temiz (bulgu yok). **1** = bulgu bulundu **VEYA** çalışma hatası (**aynı kod, ayrılmamış**) — gerçek bir hata (bozuk repo yolu) da exit 1 veriyor, rapor dosyası hiç yazılmıyor. Ayrım için rapor dosyasının var/geçerli-JSON olup olmadığına bakılmalı. | **AMPİRİK DOĞRULANDI** (gerçek secret'lı fixture + bozuk yol testi) | — |
+| 3 | JSON alan adı **`StartLine`**'dır, `Line` DEĞİL (master_prompt'un ilk taslağındaki/ilk fork bulgusundaki varsayım yanlıştı, düzeltildi). | **AMPİRİK DOĞRULANDI** | — |
+| 4 | `--log-opts="<sha1>..<sha2>"` ile incremental tarama gerçekten çalışıyor: sadece belirtilen commit aralığı taranıyor (2 commit'lik bir repoda ilk commit'i hariç tutan aralık verildiğinde "1 commits scanned" çıktısı doğru commit'i işaret etti). | **AMPİRİK DOĞRULANDI** | — |
+| 5 | Gitleaks v8.30.1 (2026-11-08 itibarıyla en güncel), resmi checksums dosyasıyla pinlendi (`gitleaks_8.30.1_windows_x64.zip` SHA256 doğrulandı). Linux x64: `gitleaks_8.30.1_linux_x64.tar.gz`. | **VERIFIED** | github.com/gitleaks/gitleaks/releases |
+| 6 | AWS'nin kendi **resmi örnek** anahtarı (`AKIAIOSFODNN7EXAMPLE`) gitleaks'in varsayılan kural setinde **bulgu üretmiyor** (muhtemelen bilinen örnek/test değeri olarak dışlanmış) — golden fixture için gerçekçi rastgele değerler (GitHub PAT formatı, Stripe key formatı) kullanılması gerekti. | **AMPİRİK DOĞRULANDI** | — |
+| 7 | `pyotp` (TOTP), `argon2-cffi` (parola hash), `starlette-csrf` (CSRF middleware) kütüphaneleri PyPI'de güncel ve bakımlı; API'leri doğrulandı (`PasswordHasher().hash()/.verify()`, `TOTP(secret).provisioning_uri()/.verify()`). | **VERIFIED** | pypi.org, ilgili GitHub repoları |
+
 ## Özet — tasarım üzerindeki etkiler
 
 1. **OSV-Scanner her zaman `--offline` + önceden indirilmiş DB ile çalıştırılmalı.** Varsayılan davranışa güvenilemez; worker'ın `network_mode: none` olması ikinci güvence katmanı olarak zaten planlanmıştı, bu bulgu onu daha da kritik hale getiriyor.

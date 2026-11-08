@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Repolar{% endblock %}
+{% block content %}
+<h2>Repolar</h2>
+<table>
+  <thead>
+    <tr><th>Repo</th><th>Görünürlük</th><th>Varsayılan dal</th><th>HEAD SHA</th><th>Aktif</th><th>Güncellendi</th>{% if user.role == "admin" %}<th></th>{% endif %}</tr>
+  </thead>
+  <tbody>
+    {% for r in repos %}
+    <tr>
+      <td>{{ r.full_name }}</td>
+      <td>{{ r.visibility }}</td>
+      <td>{{ r.default_branch }}</td>
+      <td><code class="secret">{{ (r.last_seen_sha or "-")[:12] }}</code></td>
+      <td>{% if r.is_active %}Evet{% else %}Hayır{% endif %}</td>
+      <td>{{ r.updated_at }}</td>
+      {% if user.role == "admin" %}
+      <td>
+        <form method="post" action="/repositories/{{ r.github_repo_id }}/trigger" class="inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn" type="submit">Şimdi kontrol et</button>
+        </form>
+      </td>
+      {% endif %}
+    </tr>
+    {% else %}
+    <tr><td colspan="7">Henüz keşfedilmiş repo yok.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

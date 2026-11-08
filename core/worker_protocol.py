@@ -37,13 +37,18 @@ STDERR_TAIL_MAX_BYTES = 4096
 @dataclass
 class WorkerJob:
     job_id: str
-    # 'osv_scan' (Hat B) | 'lockfile_parse' (Hat A -- parse KENDI icinde
-    # worker'da calisir cunku repo icerigi guvenilmeyen girdidir, 3.2.6).
+    # 'osv_scan' (Hat B) | 'lockfile_parse' (Hat A) | 'secret_scan' (Asama 3).
     job_kind: str
-    input_filename: str
-    # job_kind == 'lockfile_parse' icin zorunlu: core.lockfile_parser.PARSERS
-    # anahtari (ör. 'npm', 'poetry', 'go'...).
+    # job_kind in ('osv_scan','lockfile_parse') icin: staging/input/ altindaki dosya adi.
+    input_filename: str = ""
+    # job_kind == 'lockfile_parse' icin zorunlu: core.lockfile_parser.PARSERS anahtari.
     lockfile_type: Optional[str] = None
+    # job_kind == 'secret_scan' icin zorunlu: GIT_MIRRORS_DIR altindaki
+    # (read-only mount) repo mirror dizininin adi (bkz. orchestrator/secret_scan.py).
+    mirror_subdir: Optional[str] = None
+    # job_kind == 'secret_scan' icin opsiyonel: "sha1..sha2" (incremental);
+    # bos ise TAM tarama (ilk tarama/force-push/ruleset degisimi, 4.4).
+    log_opts: Optional[str] = None
 
 
 def write_job(staging_dir: Path, job: WorkerJob) -> None:
@@ -56,6 +61,8 @@ def write_job(staging_dir: Path, job: WorkerJob) -> None:
                 "job_kind": job.job_kind,
                 "input_filename": job.input_filename,
                 "lockfile_type": job.lockfile_type,
+                "mirror_subdir": job.mirror_subdir,
+                "log_opts": job.log_opts,
             }
         ),
         encoding="utf-8",
@@ -67,8 +74,10 @@ def read_job(staging_dir: Path) -> WorkerJob:
     return WorkerJob(
         job_id=data["job_id"],
         job_kind=data["job_kind"],
-        input_filename=data["input_filename"],
+        input_filename=data.get("input_filename", ""),
         lockfile_type=data.get("lockfile_type"),
+        mirror_subdir=data.get("mirror_subdir"),
+        log_opts=data.get("log_opts"),
     )
 
 

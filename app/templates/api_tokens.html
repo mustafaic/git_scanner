@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}API Token'larım{% endblock %}
+{% block content %}
+<h2>API Token'larım</h2>
+<p style="color:#666; font-size:0.85rem;">Read-only API için (<code>GET /api/findings</code>, <code>GET /api/secret-findings</code>) <code>Authorization: Bearer &lt;token&gt;</code> header'ı ile kullanılır.</p>
+
+{% if new_raw_token %}
+<div class="flash flash-ok">
+  Yeni token (SADECE ŞİMDİ gösteriliyor, bir daha gösterilmeyecek):<br>
+  <code class="secret">{{ new_raw_token }}</code>
+</div>
+{% endif %}
+
+<div class="card">
+  <h3>Yeni token oluştur</h3>
+  <form method="post" action="/tokens">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="name">İsim</label>
+    <input type="text" id="name" name="name" placeholder="örn. CI entegrasyonu" required>
+    <label for="expires_in_days">Geçerlilik (gün, boş = süresiz)</label>
+    <input type="text" id="expires_in_days" name="expires_in_days" placeholder="90">
+    <p><button class="btn btn-primary" type="submit">Oluştur</button></p>
+  </form>
+</div>
+
+<table>
+  <thead><tr><th>İsim</th><th>Scope</th><th>Oluşturuldu</th><th>Son kullanım</th><th>Süre sonu</th><th>Durum</th><th></th></tr></thead>
+  <tbody>
+    {% for t in tokens %}
+    <tr>
+      <td>{{ t.name }}</td>
+      <td>{{ t.scope }}</td>
+      <td>{{ t.created_at }}</td>
+      <td>{{ t.last_used_at or "-" }}</td>
+      <td>{{ t.expires_at or "-" }}</td>
+      <td>
+        {% if t.revoked_at %}<span class="badge badge-ACCEPTED_RISK">iptal edildi</span>
+        {% else %}<span class="badge badge-RESOLVED">aktif</span>{% endif %}
+      </td>
+      <td>
+        {% if not t.revoked_at %}
+        <form method="post" action="/tokens/{{ t.id }}/revoke" class="inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn btn-danger" type="submit">İptal et</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="7">Henüz token oluşturmadınız.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

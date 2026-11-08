@@ -7,16 +7,24 @@ FROM python:3.12-slim
 WORKDIR /srv
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 
+# git: Asama 3 secret taramasi icin kalici bare mirror onbellegi (git
+# clone --mirror / fetch), bkz. orchestrator/secret_scan.py.
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt requirements-dev.txt ./
 RUN pip install --no-cache-dir -r requirements-dev.txt
 
 COPY core ./core
 COPY adapters ./adapters
 COPY orchestrator ./orchestrator
-# NOT: worker/ burada SADECE test amacli (tests/integration/test_extraction_postgres.py
+# NOT: worker/, app/ ve watchdog/ burada SADECE test amacli (tests/integration/test_extraction_postgres.py
 # gercek worker/main.py mantigini staging protokolu uzerinden test eder,
-# Docker'siz). Orchestrator'in CALISMA ZAMANI'nda worker koduna ihtiyaci yoktur.
+# auth testleri app/auth_service.py'yi, test_watchdog_postgres.py de
+# watchdog/main.py'yi test eder -- Docker'siz, ayri imaj gerektirmeden).
+# Orchestrator'in CALISMA ZAMANI'nda bu koda ihtiyaci yoktur.
 COPY worker ./worker
+COPY app ./app
+COPY watchdog ./watchdog
 COPY migrations ./migrations
 COPY alembic.ini ./alembic.ini
 COPY tests ./tests

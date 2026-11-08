@@ -51,6 +51,13 @@ class Settings(BaseSettings):
 
     metrics_enabled: bool = True
 
+    # Asama 3: panel oturum cerezi (master_prompt.md 5 "Oturum cerezi
+    # HttpOnly + Secure + SameSite"). `Secure` HTTPS gerektirir -- yerel
+    # docker-compose dev ortami duz HTTP sundugu icin KAPATILABILIR
+    # (bilinen/belgelenmis sinirlama, bkz. deploy/docker-compose.yml app
+    # servisi; prod'da TLS terminasyonunun onunde bu DAIMA true olmali).
+    session_cookie_secure: bool = True
+
 
 def load_settings() -> Settings:
     return Settings()  # type: ignore[call-arg]  # pydantic-settings env'den doldurur

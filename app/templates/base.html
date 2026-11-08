@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Scanner Panel{% endblock %}</title>
+  <script src="/static/vendor/htmx.min.js"></script>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, sans-serif; margin: 0; background: #f6f7f9; color: #1a1a1a; }
+    header { background: #1f2a3a; color: #fff; padding: 0.75rem 1.25rem; display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap; }
+    header a { color: #d7e3f5; text-decoration: none; font-size: 0.95rem; }
+    header a:hover { color: #fff; text-decoration: underline; }
+    header .brand { font-weight: 700; color: #fff; margin-right: 0.5rem; }
+    header .spacer { flex: 1; }
+    header .who { color: #9fb3cc; font-size: 0.85rem; }
+    main { padding: 1.5rem; max-width: 1200px; margin: 0 auto; }
+    table { border-collapse: collapse; width: 100%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
+    th, td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid #e5e8ec; font-size: 0.9rem; }
+    th { background: #eef1f5; }
+    .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 0.75rem; font-size: 0.75rem; font-weight: 600; }
+    .badge-open, .badge-OPEN { background: #fde2e2; color: #9b1c1c; }
+    .badge-RESOLVED, .badge-ROTATED { background: #dcf5e0; color: #1e7a34; }
+    .badge-NEEDS_REVIEW { background: #fdf0d5; color: #94650a; }
+    .badge-ACCEPTED_RISK, .badge-FALSE_POSITIVE, .badge-NOT_AFFECTED { background: #e4e6eb; color: #41454b; }
+    .card { background: #fff; border-radius: 0.5rem; padding: 1rem 1.25rem; box-shadow: 0 1px 2px rgba(0,0,0,0.08); margin-bottom: 1rem; }
+    .flash { padding: 0.6rem 1rem; border-radius: 0.4rem; margin-bottom: 1rem; font-size: 0.9rem; }
+    .flash-error { background: #fde2e2; color: #9b1c1c; }
+    .flash-ok { background: #dcf5e0; color: #1e7a34; }
+    form.inline { display: inline; }
+    button, input[type=submit] { cursor: pointer; }
+    .btn { display: inline-block; padding: 0.35rem 0.8rem; border-radius: 0.35rem; border: 1px solid #c7ccd4; background: #fff; font-size: 0.85rem; }
+    .btn-primary { background: #1f2a3a; color: #fff; border-color: #1f2a3a; }
+    .btn-danger { background: #9b1c1c; color: #fff; border-color: #9b1c1c; }
+    label { display: block; margin: 0.5rem 0 0.2rem; font-size: 0.85rem; }
+    input[type=text], input[type=password], select { padding: 0.4rem; width: 100%; max-width: 320px; box-sizing: border-box; }
+    .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.75rem; }
+    .stat { background: #fff; border-radius: 0.5rem; padding: 1rem; box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
+    .stat .n { font-size: 1.8rem; font-weight: 700; }
+    .stat .l { font-size: 0.8rem; color: #666; }
+    code.secret { font-family: ui-monospace, monospace; background: #f1f1f1; padding: 0.15rem 0.4rem; border-radius: 0.25rem; }
+  </style>
+</head>
+<body>
+  {% if user %}
+  <header>
+    <span class="brand">Scanner Panel</span>
+    <a href="/">Dashboard</a>
+    <a href="/repositories">Repolar</a>
+    <a href="/findings">SCA Bulguları</a>
+    <a href="/secrets">Secret Bulguları</a>
+    {% if user.role == "admin" %}
+    <a href="/audit-log">Audit Log</a>
+    {% endif %}
+    <a href="/tokens">API Token'larım</a>
+    <span class="spacer"></span>
+    <span class="who">{{ user.username }} ({{ user.role }})</span>
+    <form method="post" action="/logout" class="inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn" type="submit">Çıkış</button>
+    </form>
+  </header>
+  {% endif %}
+  <main>
+    {% if flash_error %}<div class="flash flash-error">{{ flash_error }}</div>{% endif %}
+    {% if flash_ok %}<div class="flash flash-ok">{{ flash_ok }}</div>{% endif %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

@@ -15,6 +15,7 @@ from pathlib import Path
 
 import json
 
+from adapters.gitleaks import run as run_gitleaks
 from adapters.osv_scanner import run as run_osv_scanner
 from core.lockfile_parser import PARSERS
 from core.logging_setup import configure_logging
@@ -29,11 +30,33 @@ LOG = logging.getLogger(__name__)
 
 POLL_INTERVAL_SECONDS = float(os.environ.get("WORKER_POLL_INTERVAL_SECONDS", "0.5"))
 SCAN_TIMEOUT_SECONDS = int(os.environ.get("WORKER_SCAN_TIMEOUT_SECONDS", "120"))
+GITLEAKS_SCAN_TIMEOUT_SECONDS = int(os.environ.get("WORKER_GITLEAKS_TIMEOUT_SECONDS", "300"))
 
 
-def process_one_job(staging_dir: Path, binary_path: str, db_cache_dir: str) -> None:
+def process_one_job(
+    staging_dir: Path, binary_path: str, db_cache_dir: str,
+    gitleaks_binary_path: str = "/usr/local/bin/gitleaks",
+    git_mirrors_dir: str = "/mirrors",
+) -> None:
     job = read_job(staging_dir)
     LOG.info("Is alindi: job_id=%s job_kind=%s", job.job_id, job.job_kind)
+
+    if job.job_kind == "secret_scan":
+        mirror_path = Path(git_mirrors_dir) / (job.mirror_subdir or "")
+        if not mirror_path.is_dir():
+            LOG.error("Mirror dizini bulunamadi: %s", mirror_path)
+            write_result(staging_dir, exit_code=-5, stdout=b"", stderr=b"mirror dir missing")
+            return
+        output_dir = staging_dir / "output"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        report_path = output_dir / "gitleaks_report.json"
+        result = run_gitleaks(
+            binary_path=gitleaks_binary_path, repo_mirror_path=str(mirror_path),
+            report_path=str(report_path), log_opts=job.log_opts, timeout_seconds=GITLEAKS_SCAN_TIMEOUT_SECONDS,
+        )
+        LOG.info("Is tamamlandi: job_id=%s exit_code=%s", job.job_id, result.exit_code)
+        write_result(staging_dir, exit_code=result.exit_code, stdout=result.report_json or b"", stderr=result.stderr)
+        return
 
     target_path = staging_dir / INPUT_DIRNAME / job.input_filename
     if not target_path.is_file():
@@ -89,12 +112,14 @@ def main() -> None:
     staging_dir = Path(os.environ.get("STAGING_DIR", "/staging"))
     db_cache_dir = os.environ.get("DB_CACHE_DIR", "/dbs")
     binary_path = os.environ.get("OSV_SCANNER_BINARY", "/usr/local/bin/osv-scanner")
+    gitleaks_binary_path = os.environ.get("GITLEAKS_BINARY", "/usr/local/bin/gitleaks")
+    git_mirrors_dir = os.environ.get("GIT_MIRRORS_DIR", "/mirrors")
 
-    LOG.info("Worker basladi (staging=%s, db_cache=%s)", staging_dir, db_cache_dir)
+    LOG.info("Worker basladi (staging=%s, db_cache=%s, mirrors=%s)", staging_dir, db_cache_dir, git_mirrors_dir)
     while True:
         try:
             if is_job_ready(staging_dir):
-                process_one_job(staging_dir, binary_path, db_cache_dir)
+                process_one_job(staging_dir, binary_path, db_cache_dir, gitleaks_binary_path, git_mirrors_dir)
         except Exception:  # noqa: BLE001 - bir is'in hatasi worker'i durdurmamali
             LOG.exception("Is islenirken beklenmeyen hata")
         time.sleep(POLL_INTERVAL_SECONDS)

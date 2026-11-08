@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Giriş - Scanner Panel{% endblock %}
+{% block content %}
+<div class="card" style="max-width:360px; margin: 3rem auto;">
+  <h2>Giriş</h2>
+  {% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
+  <form method="post" action="/login">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="username">Kullanıcı adı</label>
+    <input type="text" id="username" name="username" value="{{ username or '' }}" required autofocus>
+    <label for="password">Parola</label>
+    <input type="password" id="password" name="password" required>
+    <label for="totp_code">TOTP kodu / kurtarma kodu (admin için zorunlu)</label>
+    <input type="text" id="totp_code" name="totp_code" autocomplete="one-time-code">
+    <p style="margin-top:1rem;"><button class="btn btn-primary" type="submit">Giriş yap</button></p>
+  </form>
+</div>
+{% endblock %}

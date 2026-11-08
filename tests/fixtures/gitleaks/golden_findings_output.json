@@ -1,0 +1,42 @@
+[
+ {
+  "RuleID": "github-pat",
+  "Description": "Uncovered a GitHub Personal Access Token, potentially leading to unauthorized repository access and sensitive content exposure.",
+  "StartLine": 2,
+  "EndLine": 2,
+  "StartColumn": 18,
+  "EndColumn": 57,
+  "Match": "ghp_1234567890abcdefghij1234567890ABCDEF",
+  "Secret": "ghp_1234567890abcdefghij1234567890ABCDEF",
+  "File": "settings.py",
+  "SymlinkFile": "",
+  "Commit": "eb0d84f3f0d3ffdd6a808fe89cd51dffd0a435a2",
+  "Entropy": 4.721928,
+  "Author": "Test",
+  "Email": "test@example.com",
+  "Date": "2026-11-08T17:24:14Z",
+  "Message": "add settings",
+  "Tags": [],
+  "Fingerprint": "eb0d84f3f0d3ffdd6a808fe89cd51dffd0a435a2:settings.py:github-pat:2"
+ },
+ {
+  "RuleID": "stripe-access-token",
+  "Description": "Found a Stripe Access Token, posing a risk to payment processing services and sensitive financial data.",
+  "StartLine": 1,
+  "EndLine": 1,
+  "StartColumn": 19,
+  "EndColumn": 91,
+  "Match": "NOT_A_REAL_SECRET_FAKE_VALUE_FOR_TESTING_ONLY_1234567890ABCDEFGHIJ\"",
+  "Secret": "NOT_A_REAL_SECRET_FAKE_VALUE_FOR_TESTING_ONLY_1234567890ABCDEFGHIJ",
+  "File": "settings.py",
+  "SymlinkFile": "",
+  "Commit": "eb0d84f3f0d3ffdd6a808fe89cd51dffd0a435a2",
+  "Entropy": 5.4995823,
+  "Author": "Test",
+  "Email": "test@example.com",
+  "Date": "2026-11-08T17:24:14Z",
+  "Message": "add settings",
+  "Tags": [],
+  "Fingerprint": "eb0d84f3f0d3ffdd6a808fe89cd51dffd0a435a2:settings.py:stripe-access-token:1"
+ }
+]

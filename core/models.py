@@ -1,7 +1,9 @@
 """SQLAlchemy modelleri. Asama 1: repositories, jobs, scan_triggers,
 system_heartbeats. Asama 2: scan_runs, advisory_mirror_syncs,
 component_snapshots, kev_entries, epss_scores, findings, finding_events,
-finding_sources (master_prompt.md 3.4, 4.5, 7-Asama 2)."""
+finding_sources (master_prompt.md 3.4, 4.5, 7-Asama 2). Asama 3: users,
+sessions, audit_log, api_tokens, secret_findings, secret_finding_events
+(master_prompt.md 4.4, 5, 7-Asama 3)."""
 
 from __future__ import annotations
 
@@ -44,6 +46,9 @@ class Repository(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     # master_prompt.md 3.2.1: Hat A (Asama 2) bu alani HEAD SHA karsilastirmasinda kullanir.
     last_seen_sha: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    # master_prompt.md 4.4: secret taramasi icin ayri takip -- `last_scanned_sha..HEAD`
+    # araligi (Hat A'nin last_seen_sha'sindan BAGIMSIZ, Asama 3).
+    last_scanned_sha: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     discovered_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -127,7 +132,7 @@ class ScanRun(Base):
     __tablename__ = "scan_runs"
     __table_args__ = (
         CheckConstraint(
-            "run_type in ('extraction','immediate_match','daily_match')", name="scan_runs_run_type_check"
+            "run_type in ('extraction','immediate_match','daily_match','secret_scan')", name="scan_runs_run_type_check"
         ),
         CheckConstraint(
             "status in ('success','partial','failed','needs_review')", name="scan_runs_status_check"
@@ -337,6 +342,165 @@ class FindingSource(Base):
     finding_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     scan_run_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     raw_vulnerability_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+# --- Asama 3: auth, audit, API tokens, secret findings ----------------------
+
+
+class User(Base):
+    """Yerel hesap (master_prompt.md 5 "Uygulama guvenligi"). Harici IdP yok.
+    Admin icin TOTP ZORUNLU (uygulama katmaninda enforce edilir, bkz.
+    core/auth.py); viewer icin opsiyonel."""
+
+    __tablename__ = "users"
+    __table_args__ = (CheckConstraint("role in ('admin','viewer')", name="users_role_check"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    # argon2id hash (core.auth) -- DUZ METIN PAROLA ASLA TUTULMAZ.
+    password_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    # TOTP sirri -- hassas, ASLA loglanmaz (core.logging_setup.register_secret
+    # ile maskeleme listesine eklenir, bkz. core/auth.py).
+    totp_secret: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    totp_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Kurtarma kodlari TEK KULLANIMLIK ve HASH'LENMIS tutulur (duz metin degil).
+    recovery_code_hashes: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    failed_login_attempts: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0)
+    locked_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class Session(Base):
+    """Sunucu tarafi oturum kaydi (master_prompt.md 5: "Oturum cerezi HttpOnly
+    + Secure + SameSite, bosta zaman asimi"). Cerezde SADECE bu id tutulur;
+    DB-destekli olmasi admin'e "oturumu zorla kapat" imkani verir."""
+
+    __tablename__ = "sessions"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)  # rastgele token (hash degil, kendisi)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AuditLog(Base):
+    """master_prompt.md 5: "giris, durum degisikligi, suppression,
+    kullanici/rol/ayar/API-token degisikligi, export." Append-only."""
+
+    __tablename__ = "audit_log"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    actor_user_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    actor_username: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    action: Mapped[str] = mapped_column(String(100), nullable=False)
+    target_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    target_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    detail: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class ApiToken(Base):
+    """master_prompt.md 5: "Read-only API token'lari (hash'li saklanir,
+    scope'lu, sureli, audit'li)". Token'in kendisi SADECE olusturulurken
+    gosterilir, DB'de yalnizca hash'i tutulur."""
+
+    __tablename__ = "api_tokens"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    scope: Mapped[str] = mapped_column(String(20), nullable=False, default="read")
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class SecretFinding(Base):
+    """Secret bulgusu (master_prompt.md 4.4 -- SCA'dan FARKLI kurallar):
+    koddan silinince RESOLVED OLMAZ, sadece admin "rotate edildi" onayiyla
+    kapanir. Ham secret degeri hicbir sutunda TUTULMAZ -- sadece hash'i."""
+
+    __tablename__ = "secret_findings"
+    __table_args__ = (
+        UniqueConstraint("repo_id", "custom_fingerprint", name="uq_secret_findings_natural_key"),
+        CheckConstraint(
+            "lifecycle_status in ('OPEN','ROTATED','FALSE_POSITIVE','ACCEPTED_RISK')",
+            name="secret_findings_lifecycle_status_check",
+        ),
+        Index("ix_secret_findings_repo_status", "repo_id", "lifecycle_status"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    repo_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    rule_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    file_path: Mapped[str] = mapped_column(Text, nullable=False)
+    # Kendi fingerprint'imiz: rule_id + file_path + secret-content-hash
+    # (satirdan BAGIMSIZ, kararli -- bkz. docs/ASSUMPTIONS.md #3).
+    custom_fingerprint: Mapped[str] = mapped_column(String(128), nullable=False)
+    # Gitleaks'in KENDI fingerprint'i (satir numarasina bagli, sadece kanit/referans).
+    gitleaks_fingerprint: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    secret_content_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    commit_sha: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    line_number: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    entropy: Mapped[Optional[float]] = mapped_column(Numeric(6, 3), nullable=True)
+    tags: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    # master_prompt.md 4.4: koddan kaldirilmis olmak RESOLVED yapmaz, sadece
+    # bu bayrak False olur (FIX_PENDING benzeri ara sinyal).
+    present_in_current_code: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    lifecycle_status: Mapped[str] = mapped_column(String(20), nullable=False, default="OPEN")
+    baseline: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    first_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    rotated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    rotated_by_user_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    rotation_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class SecretFindingEvent(Base):
+    """Append-only olay gecmisi (secret_findings icin, finding_events'in esi)."""
+
+    __tablename__ = "secret_finding_events"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    secret_finding_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    event_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    from_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    to_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    actor: Mapped[str] = mapped_column(String(100), nullable=False, default="system")
+    reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    evidence: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

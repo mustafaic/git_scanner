@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Bulgu #{{ finding.id }}{% endblock %}
+{% block content %}
+<p><a href="/findings">&larr; Bulgu listesi</a></p>
+<div class="card">
+  <h2>{{ finding.package_name }} {{ finding.version }} &mdash; {{ finding.canonical_vulnerability_id }}</h2>
+  <p><span class="badge badge-{{ finding.lifecycle_status }}">{{ finding.lifecycle_status }}</span>
+     {% if finding.kev %}<span class="badge badge-OPEN">KEV</span>{% endif %}
+     {% if finding.verification_status == "NEEDS_REVIEW" %}<span class="badge badge-NEEDS_REVIEW">NEEDS_REVIEW</span>{% endif %}</p>
+  <table>
+    <tr><th>Repo</th><td>{{ repo_name }}</td></tr>
+    <tr><th>Lockfile</th><td>{{ finding.lockfile_path }}</td></tr>
+    <tr><th>Ekosistem</th><td>{{ finding.ecosystem }}</td></tr>
+    <tr><th>Purl</th><td>{{ finding.purl or "-" }}</td></tr>
+    <tr><th>Scope/Relation</th><td>{{ finding.scope }} / {{ finding.relation }}</td></tr>
+    <tr><th>CVSS</th><td>{{ finding.severity_cvss_score if finding.severity_cvss_score is not none else "-" }} ({{ finding.severity_cvss_vector or "-" }}, kaynak: {{ finding.severity_source or "-" }})</td></tr>
+    <tr><th>EPSS</th><td>{{ finding.epss_score if finding.epss_score is not none else "-" }} (percentile {{ finding.epss_percentile if finding.epss_percentile is not none else "-" }})</td></tr>
+    <tr><th>Fix</th><td>{{ finding.fix_status }} {{ finding.fix_version or "" }}</td></tr>
+    <tr><th>Aliases</th><td>{{ finding.aliases | join(", ") }}</td></tr>
+    <tr><th>İlk görülme</th><td>{{ finding.first_seen_at }}</td></tr>
+    <tr><th>Son görülme</th><td>{{ finding.last_seen_at }}</td></tr>
+    <tr><th>Çözülme</th><td>{{ finding.resolved_at or "-" }}</td></tr>
+    {% if finding.needs_review_reason %}<tr><th>Review nedeni</th><td>{{ finding.needs_review_reason }}</td></tr>{% endif %}
+  </table>
+</div>
+
+{% if user.role == "admin" %}
+<div class="card">
+  <h3>Durumu değiştir</h3>
+  <form method="post" action="/findings/{{ finding.id }}/status">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="new_status">Yeni durum</label>
+    <select name="new_status" id="new_status">
+      {% for s in manual_statuses %}
+      <option value="{{ s }}" {% if s == finding.lifecycle_status %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+    <label for="reason">Gerekçe (audit log'a yazılır)</label>
+    <input type="text" id="reason" name="reason" placeholder="örn. false positive, test kodu">
+    <p><button class="btn btn-primary" type="submit">Kaydet</button></p>
+  </form>
+  <p style="color:#666; font-size:0.8rem;">RESOLVED durumu panelden elle ayarlanamaz -- sadece eşleştirme motoru (taze advisory DB ile) kapatabilir.</p>
+</div>
+{% endif %}
+
+<div class="card">
+  <h3>Olay geçmişi</h3>
+  <table>
+    <thead><tr><th>Zaman</th><th>Olay</th><th>Durum</th><th>Aktör</th><th>Gerekçe</th></tr></thead>
+    <tbody>
+      {% for e in events %}
+      <tr>
+        <td>{{ e.created_at }}</td>
+        <td>{{ e.event_type }}</td>
+        <td>{{ e.from_status or "-" }} &rarr; {{ e.to_status or "-" }}</td>
+        <td>{{ e.actor }}</td>
+        <td>{{ e.reason or "-" }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5">Henüz olay yok.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

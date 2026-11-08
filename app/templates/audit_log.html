@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Audit Log{% endblock %}
+{% block content %}
+<h2>Audit Log</h2>
+<table>
+  <thead><tr><th>Zaman</th><th>Aktör</th><th>Eylem</th><th>Hedef</th><th>Detay</th></tr></thead>
+  <tbody>
+    {% for e in entries %}
+    <tr>
+      <td>{{ e.created_at }}</td>
+      <td>{{ e.actor_username or "-" }}</td>
+      <td>{{ e.action }}</td>
+      <td>{% if e.target_type %}{{ e.target_type }}:{{ e.target_id }}{% else %}-{% endif %}</td>
+      <td>{{ e.detail or "-" }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5">Henüz audit log kaydı yok.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p>
+  {% if page > 1 %}<a href="/audit-log?page={{ page - 1 }}">&larr; Önceki</a>{% endif %}
+  {% if has_more %} | <a href="/audit-log?page={{ page + 1 }}">Sonraki &rarr;</a>{% endif %}
+</p>
+{% endblock %}

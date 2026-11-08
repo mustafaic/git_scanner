@@ -81,3 +81,16 @@ def test_lockfile_parse_handles_malformed_content_gracefully(tmp_path):
     # (bkz. core/lockfile_parser.py) -> exit_code 0, bos liste.
     assert result.exit_code == 0
     assert json.loads(result.stdout) == []
+
+
+def test_secret_scan_job_missing_mirror_dir(tmp_path):
+    clear_staging(tmp_path)
+    write_job(tmp_path, WorkerJob(job_id="1", job_kind="secret_scan", mirror_subdir="nonexistent-repo.git"))
+
+    process_one_job(
+        tmp_path, binary_path="/x", db_cache_dir="/x",
+        gitleaks_binary_path="/x", git_mirrors_dir=str(tmp_path / "mirrors_root"),
+    )
+
+    result = read_result(tmp_path)
+    assert result.exit_code == -5
