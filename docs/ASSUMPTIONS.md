@@ -182,3 +182,22 @@ bekleniyor" ara durumu (yeni kullanıcı ilk girişte zorla TOTP enroll
 eder) gerekir -- bu Aşama 4/5'te ayrıca değerlendirilebilir, şu an MVP
 kapsamı dışında tutuldu (kural 11).
 
+## 13. A5 sahip yönlendirme: CODEOWNERS otomatik tespiti kapsam dışı (2026-11-09)
+
+**Karar:** master_prompt.md 6 (A5) sıralaması "CODEOWNERS → GitHub
+team/depo eşlemesi (kullanılabilirse) → içe aktarılabilir (CSV) → 'sahipsiz'
+listesi" şeklinde. Bu turda SADECE CSV import uygulandı (`app/routes_owners.py`,
+`core/owners.py`); CODEOWNERS'ın otomatik okunup parse edilmesi YAPILMADI.
+
+**Gerekçe:** CODEOWNERS tespiti, orchestrator'ın extraction akışına YENİ bir
+GitHub API çağrısı (tree'de `.github/CODEOWNERS`/`CODEOWNERS`/`docs/CODEOWNERS`
+arama + blob fetch + parse) eklemeyi gerektiriyor -- bu, zaten test edilmiş
+Hat A kodunu (orchestrator/extraction.py) genişletmek anlamına gelir ve
+gerçek bir test org'unda CODEOWNERS içeren bir repo olmadan ampirik
+doğrulanamaz. CSV import, aynı nihai durumu (repo → sahip eşlemesi) sıfır
+orchestrator riskiyle sağlıyor.
+
+**Şema hazır:** `repo_owners.source` sütunu `'codeowners'` değerini zaten
+kabul ediyor (CheckConstraint) -- CODEOWNERS desteği eklenince şema
+değişikliği GEREKMEYECEK, sadece orchestrator'a bir senkron adımı eklenecek.
+
