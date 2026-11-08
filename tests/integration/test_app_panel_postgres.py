@@ -31,7 +31,7 @@ if DATABASE_URL:
     from app.csrf import CSRF_COOKIE_NAME
     from app.main import app
     from core import auth
-    from core.models import AuditLog, Finding, Repository, ScanRun, ScanTrigger, SecretFinding, User
+    from core.models import AuditLog, Finding, FindingSource, Repository, ScanRun, ScanTrigger, SecretFinding, User
 
 
 ADMIN_PASSWORD = "Str0ng!Passw0rd#2026"
@@ -1030,3 +1030,104 @@ def test_dashboard_owner_filter_shows_only_owned_repo_findings(client, engine):
     resp = client.get("/", params={"owner": "team-a"})
     assert "GHSA-team-a" in resp.text
     assert "GHSA-team-b" not in resp.text
+
+
+# --- Stage 4 part 6: A3/A10 tarama dahil/haric politikasi + viewer tetikleme ---
+
+def test_admin_excludes_and_reincludes_repo_blocking_trigger_meanwhile(client, engine):
+    admin_id, secret = _make_admin(engine)
+    from sqlalchemy.orm import sessionmaker
+
+    Session = sessionmaker(bind=engine, future=True)
+    with Session() as session:
+        session.add(Repository(github_repo_id=70, full_name="acme/exclude-check", owner="acme", name="exclude-check", default_branch="main", visibility="private"))
+        session.commit()
+
+    code = pyotp.TOTP(secret).now()
+    _login(client, "admin", ADMIN_PASSWORD, code)
+    csrf = _csrf_token(client)
+
+    no_reason_resp = client.post("/repositories/70/exclude", data={"reason": "", "csrf_token": csrf})
+    assert no_reason_resp.status_code == 400
+
+    exclude_resp = client.post("/repositories/70/exclude", data={"reason": "arşivlendi, taramaya değmez", "csrf_token": csrf}, follow_redirects=False)
+    assert exclude_resp.status_code == 303
+
+    with engine.begin() as conn:
+        row = conn.execute(text("SELECT scan_excluded, scan_exclude_reason FROM repositories WHERE github_repo_id=70")).one()
+        action = conn.execute(text("SELECT action FROM audit_log WHERE action='repo_scan_excluded'")).scalar_one()
+    assert row[0] is True
+    assert "arşivlendi" in row[1]
+    assert action == "repo_scan_excluded"
+
+    trigger_resp = client.post("/repositories/70/trigger", data={"csrf_token": csrf})
+    assert trigger_resp.status_code == 400
+
+    unexclude_resp = client.post("/repositories/70/unexclude", data={"csrf_token": csrf}, follow_redirects=False)
+    assert unexclude_resp.status_code == 303
+    trigger_resp2 = client.post("/repositories/70/trigger", data={"csrf_token": csrf}, follow_redirects=False)
+    assert trigger_resp2.status_code == 303
+
+
+def test_viewer_trigger_blocked_by_default_then_allowed_then_rate_limited(client, engine):
+    viewer_id = _make_viewer(engine)
+    admin_id, secret = _make_admin(engine)
+    from sqlalchemy.orm import sessionmaker
+
+    Session = sessionmaker(bind=engine, future=True)
+    with Session() as session:
+        session.add(Repository(github_repo_id=71, full_name="acme/viewer-trigger-check", owner="acme", name="viewer-trigger-check", default_branch="main", visibility="private"))
+        session.commit()
+
+    _login(client, "viewer", VIEWER_PASSWORD)
+    csrf = _csrf_token(client)
+    blocked_resp = client.post("/repositories/71/trigger", data={"csrf_token": csrf})
+    assert blocked_resp.status_code == 403
+
+    client.post("/logout", data={"csrf_token": csrf})
+    code = pyotp.TOTP(secret).now()
+    _login(client, "admin", ADMIN_PASSWORD, code)
+    admin_csrf = _csrf_token(client)
+    client.post(
+        "/settings/viewer-trigger", data={"enabled": "true", "max_per_hour": "2", "csrf_token": admin_csrf},
+    )
+    client.post("/logout", data={"csrf_token": admin_csrf})
+
+    _login(client, "viewer", VIEWER_PASSWORD)
+    csrf2 = _csrf_token(client)
+    ok1 = client.post("/repositories/71/trigger", data={"csrf_token": csrf2}, follow_redirects=False)
+    assert ok1.status_code == 303
+    ok2 = client.post("/repositories/71/trigger", data={"csrf_token": csrf2}, follow_redirects=False)
+    assert ok2.status_code == 303
+    limited = client.post("/repositories/71/trigger", data={"csrf_token": csrf2})
+    assert limited.status_code == 429
+
+
+def test_finding_detail_shows_source_scan_run_lineage(client, engine):
+    _, secret = _make_admin(engine)
+    from sqlalchemy.orm import sessionmaker
+
+    Session = sessionmaker(bind=engine, future=True)
+    with Session() as session:
+        session.add(Repository(github_repo_id=72, full_name="acme/lineage-check", owner="acme", name="lineage-check", default_branch="main", visibility="private"))
+        scan_run = ScanRun(run_type="immediate_match", repo_id=72, commit_sha="deadbeef1234", scanner_name="osv-scanner", scanner_version="2.7.0", status="success")
+        session.add(scan_run)
+        session.flush()
+        finding = Finding(
+            repo_id=72, lockfile_path="package-lock.json", ecosystem="npm", package_name="lodash",
+            version="4.17.15", canonical_vulnerability_id="GHSA-lineage-1", verification_status="VERIFIED",
+            lifecycle_status="OPEN",
+        )
+        session.add(finding)
+        session.flush()
+        session.add(FindingSource(finding_id=finding.id, scan_run_id=scan_run.id, raw_vulnerability_id="GHSA-lineage-1"))
+        session.commit()
+        finding_id = finding.id
+
+    code = pyotp.TOTP(secret).now()
+    _login(client, "admin", ADMIN_PASSWORD, code)
+    resp = client.get(f"/findings/{finding_id}")
+    assert resp.status_code == 200
+    assert "immediate_match" in resp.text
+    assert "deadbeef1234" in resp.text
+    assert "osv-scanner" in resp.text

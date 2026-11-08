@@ -138,6 +138,14 @@ def _process_repo_check_job(job: Job) -> None:
         if repo is None:
             raise RuntimeError(f"repositories tablosunda bulunamadi: repo_id={job.repo_id}")
 
+        # Savunma katmani: tetikleyici, haric tutma ayarindan ONCE kuyruga
+        # girmis olabilir (ör. elle tetikleme + ayni anda admin'in haric
+        # tutmasi) -- is burada da tekrar kontrol edilir (madde 6 A3/A10).
+        if repo.scan_excluded:
+            LOG.info("Repo %s tarama politikasiyla haric, is atlaniyor", repo.full_name)
+            complete_job(session, job.id)
+            return
+
         try:
             changed = sync_repository_head(settings.github_api_base_url, _auth, repo)
         except EmptyRepositoryError:
@@ -211,7 +219,11 @@ def _poll_tick() -> None:
     if _auth is None:
         return
     with session_scope() as session:
-        repos = session.execute(select(Repository).where(Repository.is_active.is_(True))).scalars().all()
+        # A3/A10 (master_prompt.md 6): tarama politikasiyla haric tutulan
+        # repolar yoklama/tetikleme dongusune HIC girmez.
+        repos = session.execute(
+            select(Repository).where(Repository.is_active.is_(True), Repository.scan_excluded.is_(False))
+        ).scalars().all()
     if not repos:
         return
     try:

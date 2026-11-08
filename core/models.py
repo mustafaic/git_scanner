@@ -44,6 +44,12 @@ class Repository(Base):
     archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     fork: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # A3/A10 (master_prompt.md 6): "Repo bazli tarama politikasi (dahil/
+    # harici + gerekce, audit'li)". True ise orchestrator bu repoyu
+    # yoklama/tetikleme dongulerinde ATLAR (bkz. orchestrator/main.py
+    # _poll_tick, orchestrator/triggers.py consume_triggers_and_enqueue).
+    scan_excluded: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    scan_exclude_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     # master_prompt.md 3.2.1: Hat A (Asama 2) bu alani HEAD SHA karsilastirmasinda kullanir.
     last_seen_sha: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     # master_prompt.md 4.4: secret taramasi icin ayri takip -- `last_scanned_sha..HEAD`

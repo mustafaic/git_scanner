@@ -16,7 +16,7 @@ from starlette.requests import Request
 from app.auth_service import record_audit
 from app.csrf import require_csrf
 from app.deps import get_db, get_repo_names, render_page, require_admin, require_user
-from core.models import Finding, FindingEvent, User
+from core.models import Finding, FindingEvent, FindingSource, ScanRun, User
 from core.settings_store import SLA_DAYS_KEY, get_setting
 from core.sla import compute_due_date, days_remaining, is_overdue, merged_sla_days
 
@@ -71,10 +71,20 @@ def finding_detail(request: Request, finding_id: int, db: DbSession = Depends(ge
     ).scalars().all()
     sla_days = merged_sla_days(get_setting(db, SLA_DAYS_KEY))
     sla = _sla_info(finding, sla_days) if finding.lifecycle_status in ("OPEN", "IN_PROGRESS", "REOPENED") else None
+
+    # A4 kanit paneli (master_prompt.md 6): "hangi tarama/eslestirme
+    # run'indan" -- bir bulgu BIRDEN COK scan_run'dan kanit alabilir
+    # (finding_sources, master_prompt.md 4.5).
+    source_runs = db.execute(
+        select(ScanRun).join(FindingSource, FindingSource.scan_run_id == ScanRun.id)
+        .where(FindingSource.finding_id == finding_id).order_by(ScanRun.started_at.desc())
+    ).scalars().all()
+
     return render_page(
         request, "finding_detail.html",
         {"finding": finding, "repo_name": repo_names.get(finding.repo_id, str(finding.repo_id)),
-         "events": events, "manual_statuses": sorted(_MANUAL_ALLOWED_STATUSES), "sla": sla},
+         "events": events, "manual_statuses": sorted(_MANUAL_ALLOWED_STATUSES), "sla": sla,
+         "source_runs": source_runs},
         user=user,
     )
 

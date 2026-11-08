@@ -50,6 +50,26 @@
 {% endif %}
 
 <div class="card">
+  <h3>Kanıt: hangi taramadan geldi</h3>
+  <table>
+    <thead><tr><th>Tarama türü</th><th>Commit</th><th>Scanner</th><th>Advisory DB tarihi</th><th>Zaman</th></tr></thead>
+    <tbody>
+      {% for run in source_runs %}
+      <tr>
+        <td>{{ run.run_type }}</td>
+        <td><code class="secret">{{ (run.commit_sha or "-")[:12] }}</code></td>
+        <td>{{ run.scanner_name or "-" }} {{ run.scanner_version or "" }}</td>
+        <td>{{ run.advisory_db_as_of or "-" }}</td>
+        <td>{{ run.started_at }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5">Kanıt kaydı yok.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
   <h3>Olay geçmişi</h3>
   <table>
     <thead><tr><th>Zaman</th><th>Olay</th><th>Durum</th><th>Aktör</th><th>Gerekçe</th></tr></thead>

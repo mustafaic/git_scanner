@@ -14,8 +14,12 @@ from core.models import Setting
 
 SLA_DAYS_KEY = "sla_days"
 NOTIFICATIONS_KEY = "notifications"
+VIEWER_TRIGGER_KEY = "viewer_manual_trigger"
 
 DEFAULT_NOTIFICATIONS: dict[str, Any] = {"email_enabled": False, "recipients": []}
+# master_prompt.md 6 A10: "viewer'lara elle tetikleme izni (varsayilan
+# kapali, hiz limitli)".
+DEFAULT_VIEWER_TRIGGER: dict[str, Any] = {"enabled": False, "max_per_hour": 3}
 
 
 def get_setting(session: Session, key: str, default: Optional[Any] = None) -> Any:

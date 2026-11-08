@@ -4,7 +4,7 @@
 <h2>Repolar</h2>
 <table>
   <thead>
-    <tr><th>Repo</th><th>Görünürlük</th><th>Varsayılan dal</th><th>HEAD SHA</th><th>Aktif</th><th>Güncellendi</th>{% if user.role == "admin" %}<th></th>{% endif %}</tr>
+    <tr><th>Repo</th><th>Görünürlük</th><th>Varsayılan dal</th><th>HEAD SHA</th><th>Aktif</th><th>Tarama politikası</th><th>Güncellendi</th><th></th></tr>
   </thead>
   <tbody>
     {% for r in repos %}
@@ -14,18 +14,42 @@
       <td>{{ r.default_branch }}</td>
       <td><code class="secret">{{ (r.last_seen_sha or "-")[:12] }}</code></td>
       <td>{% if r.is_active %}Evet{% else %}Hayır{% endif %}</td>
-      <td>{{ r.updated_at }}</td>
-      {% if user.role == "admin" %}
       <td>
+        {% if r.scan_excluded %}
+        <span class="badge badge-ACCEPTED_RISK">hariç</span> <span style="font-size:0.75rem; color:#666;">{{ r.scan_exclude_reason }}</span>
+        {% else %}
+        <span class="badge badge-RESOLVED">dahil</span>
+        {% endif %}
+      </td>
+      <td>{{ r.updated_at }}</td>
+      <td>
+        {% if can_trigger and not r.scan_excluded %}
         <form method="post" action="/repositories/{{ r.github_repo_id }}/trigger" class="inline">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <button class="btn" type="submit">Şimdi kontrol et</button>
         </form>
+        {% endif %}
+        {% if user.role == "admin" %}
+        {% if r.scan_excluded %}
+        <form method="post" action="/repositories/{{ r.github_repo_id }}/unexclude" class="inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn" type="submit">Taramaya dahil et</button>
+        </form>
+        {% else %}
+        <details style="display:inline-block;">
+          <summary class="btn" style="display:inline;">Hariç tut</summary>
+          <form method="post" action="/repositories/{{ r.github_repo_id }}/exclude">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="text" name="reason" placeholder="gerekçe (zorunlu)" required>
+            <button class="btn btn-danger" type="submit">Hariç tut</button>
+          </form>
+        </details>
+        {% endif %}
+        {% endif %}
       </td>
-      {% endif %}
     </tr>
     {% else %}
-    <tr><td colspan="7">Henüz keşfedilmiş repo yok.</td></tr>
+    <tr><td colspan="8">Henüz keşfedilmiş repo yok.</td></tr>
     {% endfor %}
   </tbody>
 </table>
