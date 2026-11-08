@@ -321,3 +321,122 @@ def test_logout_revokes_session(client, engine):
     resp = client.get("/", follow_redirects=False)
     assert resp.status_code == 303
     assert resp.headers["location"].startswith("/login")
+
+
+def test_raw_secret_value_never_appears_in_html_or_api(client, engine):
+    """master_prompt.md Asama 3 kabul kriteri: 'ham secret hicbir yerde
+    gorunmez (DB dump, log, API, HTML uzerinde otomatik kontrol testi)'.
+    adapters/gitleaks.py zaten parse() siniri icin bunu test ediyor
+    (tests/unit/test_gitleaks_adapter.py); burada panel katmani (HTML
+    detay sayfasi + JSON API) icin ayni garantiyi dogruluyoruz. Ham
+    deger SecretFinding'de SUTUN OLARAK HIC YOK -- bu test, yanlislikla
+    (ör. ileride) bir debug alaninda sizdirilmadigini kanitlar."""
+    import hashlib
+
+    raw_secret = "ghp_ThisIsAFakeButRealisticLookingTokenForTestingOnly123456"
+    content_hash = hashlib.sha256(raw_secret.encode("utf-8")).hexdigest()
+
+    admin_id, secret = _make_admin(engine)
+    from sqlalchemy.orm import sessionmaker
+
+    Session = sessionmaker(bind=engine, future=True)
+    with Session() as session:
+        session.add(Repository(
+            github_repo_id=3, full_name="acme/leak-check", owner="acme", name="leak-check",
+            default_branch="main", visibility="private",
+        ))
+        sf = SecretFinding(
+            repo_id=3, rule_id="github-pat", file_path="settings.py",
+            custom_fingerprint="fp-leak-check", secret_content_hash=content_hash,
+            gitleaks_fingerprint="deadbeef:settings.py:github-pat:2", lifecycle_status="OPEN",
+        )
+        session.add(sf)
+        session.commit()
+        secret_id = sf.id
+
+    code = pyotp.TOTP(secret).now()
+    _login(client, "admin", ADMIN_PASSWORD, code)
+
+    html_resp = client.get(f"/secrets/{secret_id}")
+    assert html_resp.status_code == 200
+    assert raw_secret not in html_resp.text
+    assert content_hash in html_resp.text  # hash GORUNUR olmali, ham deger DEGIL
+
+    list_resp = client.get("/secrets")
+    assert raw_secret not in list_resp.text
+
+    token = _csrf_token(client)
+    token_resp = client.post("/tokens", data={"name": "leak-check", "expires_in_days": "", "csrf_token": token})
+    import re
+
+    match = re.search(r'<code class="secret">([^<]+)</code>', token_resp.text)
+    api_token = match.group(1)
+
+    api_resp = client.get("/api/secret-findings", headers={"Authorization": f"Bearer {api_token}"})
+    assert api_resp.status_code == 200
+    body_text = api_resp.text
+    assert raw_secret not in body_text
+    for item in api_resp.json():
+        assert "secret_content_hash" not in item  # API bile hash'i donmuyor (ihtiyac yok)
+        for value in item.values():
+            assert value != raw_secret
+
+
+def test_viewer_can_only_reach_own_token_write_endpoints_all_other_writes_blocked(client, engine):
+    """master_prompt.md Asama 3 kabul kriteri: 'viewer hicbir yazma uc
+    noktasina erisemez' -- KULLANICI KARARI (bkz. docs/ASSUMPTIONS.md):
+    bu kuralin TEK istisnasi viewer'in KENDI read-only API token'ini
+    olusturup iptal etmesidir (yetki yukselmesi degil -- panelde zaten
+    gordugu veriyi baska bir kanaldan cekmek icin). Asagidaki TUM diger
+    yazma uc noktalari viewer icin 401/403/404 ile reddedilmeli."""
+    viewer_id = _make_viewer(engine)
+    admin_id, _ = _make_admin(engine)
+
+    from sqlalchemy.orm import sessionmaker
+
+    Session = sessionmaker(bind=engine, future=True)
+    with Session() as session:
+        session.add(Repository(
+            github_repo_id=4, full_name="acme/rbac-check", owner="acme", name="rbac-check",
+            default_branch="main", visibility="private",
+        ))
+        finding = Finding(
+            repo_id=4, lockfile_path="package-lock.json", ecosystem="npm", package_name="lodash",
+            version="4.17.15", canonical_vulnerability_id="GHSA-xxxx", verification_status="VERIFIED",
+            lifecycle_status="OPEN",
+        )
+        sf = SecretFinding(
+            repo_id=4, rule_id="aws-access-key", file_path="x.env",
+            custom_fingerprint="fp-rbac-check", secret_content_hash="hash-rbac-check", lifecycle_status="OPEN",
+        )
+        session.add_all([finding, sf])
+        session.commit()
+        finding_id, secret_id = finding.id, sf.id
+
+    _login(client, "viewer", VIEWER_PASSWORD)
+    csrf = _csrf_token(client)
+
+    write_requests = [
+        ("post", f"/findings/{finding_id}/status", {"new_status": "FALSE_POSITIVE", "reason": "x", "csrf_token": csrf}),
+        ("post", f"/secrets/{secret_id}/status", {"new_status": "ROTATED", "note": "x", "csrf_token": csrf}),
+        ("post", "/repositories/4/trigger", {"csrf_token": csrf}),
+    ]
+    for method, path, data in write_requests:
+        resp = getattr(client, method)(path, data=data, follow_redirects=False)
+        assert resp.status_code == 403, f"{method.upper()} {path} viewer'a 403 vermeli, {resp.status_code} dondu"
+
+    audit_resp = client.get("/audit-log")
+    assert audit_resp.status_code == 403
+
+    # TEK istisna (kullanici karari): kendi read-only API token'ini yonetmek.
+    token_resp = client.post("/tokens", data={"name": "viewer-own-token", "expires_in_days": "", "csrf_token": csrf})
+    assert token_resp.status_code == 200
+    with engine.begin() as conn:
+        owner = conn.execute(text("SELECT user_id FROM api_tokens WHERE name='viewer-own-token'")).scalar_one()
+    assert owner == viewer_id
+
+    with engine.begin() as conn:
+        status_after = conn.execute(text("SELECT lifecycle_status FROM findings WHERE id=:i"), {"i": finding_id}).scalar_one()
+        secret_status_after = conn.execute(text("SELECT lifecycle_status FROM secret_findings WHERE id=:i"), {"i": secret_id}).scalar_one()
+    assert status_after == "OPEN"
+    assert secret_status_after == "OPEN"

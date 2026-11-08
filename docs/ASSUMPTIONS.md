@@ -138,3 +138,24 @@ bunu kullanıyor; parse edilemezse `database_specific.severity` kaba
 etiketine (LOW/MEDIUM/HIGH/CRITICAL) düşer ve bu durumu `severity_source`
 alanında işaretler.
 
+## 11. Viewer rolü ve API token self-servisi — KARAR VERİLDİ (2026-11-08)
+
+**Çatışma:** master_prompt.md 7 (Aşama 3 kabul kriteri): "viewer hiçbir
+yazma uç noktasına erişemez (doğrudan istek dahil)". Panelde ise her
+kullanıcı (viewer dahil) kendi read-only API token'ını oluşturup iptal
+edebiliyor (`POST /tokens`, `POST /tokens/{id}/revoke`) -- bu teknik
+olarak bir yazma işlemi.
+
+**Kullanıcı kararı:** Viewer'a izin verilsin (mevcut davranış korundu).
+Gerekçe: viewer kendi için ürettiği bir read-only-scope token ile API
+üzerinden çekebileceği veri, panelde zaten görebildiği veriyle AYNI --
+gerçek bir yetki yükselmesi değil, sadece erişim kanalı değişiyor. Bu,
+"viewer hiçbir yazma uç noktasına erişemez" kuralının **TEK istisnası**
+olarak kabul edildi.
+
+**Uygulama:** `app/routes_tokens.py` (`require_user`, admin değil) +
+`tests/integration/test_app_panel_postgres.py::test_viewer_can_only_reach_own_token_write_endpoints_all_other_writes_blocked`
+bu istisnayı ve TÜM diğer yazma uç noktalarının (bulgu durumu, secret
+rotasyonu, elle tetikleme, audit log görüntüleme) viewer için 403 ile
+reddedildiğini doğrular.
+
