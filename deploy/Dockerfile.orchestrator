@@ -13,6 +13,10 @@ RUN pip install --no-cache-dir -r requirements-dev.txt
 COPY core ./core
 COPY adapters ./adapters
 COPY orchestrator ./orchestrator
+# NOT: worker/ burada SADECE test amacli (tests/integration/test_extraction_postgres.py
+# gercek worker/main.py mantigini staging protokolu uzerinden test eder,
+# Docker'siz). Orchestrator'in CALISMA ZAMANI'nda worker koduna ihtiyaci yoktur.
+COPY worker ./worker
 COPY migrations ./migrations
 COPY alembic.ini ./alembic.ini
 COPY tests ./tests
