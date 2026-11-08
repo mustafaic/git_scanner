@@ -215,16 +215,23 @@ def ingest_lockfile_findings(
     scan_run_status: str,
     built_findings: List["BuiltFinding"],
     is_baseline: bool,
-) -> Dict[str, int]:
+) -> Tuple[Dict[str, int], List[Finding]]:
     """Bir lockfile'in TUM bilesenlerinden uretilen BuiltFinding listesini
     upsert eder ve RESOLVED/REOPENED reconciliation'ini yapar.
 
     master_prompt.md 4.3 RESOLVED kurali: sadece `scan_run_status == 'success'`
     ise eski acik bulgular (artik mevcut taramada gorunmeyenler) RESOLVED
     olur. PARTIAL/failed/needs_review taramalarda HICBIR bulgu kapanmaz.
+
+    Donen ikinci deger (`created_findings`): BU cagirmada YENI olusturulan
+    Finding'ler -- orchestrator/matching.py bunu A6 "kritik bulgu" aninda
+    bildirim kararina (core/notifications.py) girdi olarak kullanir
+    (master_prompt.md 6: 'Baseline bulgulari hicbir zaman bildirim uretmez',
+    `is_baseline` zaten her Finding'in `baseline` alaninda tasiniyor).
     """
     now = dt.datetime.now(dt.timezone.utc)
     stats = {"created": 0, "updated": 0, "resolved": 0, "reopened": 0}
+    created_findings: List[Finding] = []
     current_keys: Set[Tuple[Optional[str], str, str]] = set()
 
     for bf in built_findings:
@@ -282,6 +289,7 @@ def ingest_lockfile_findings(
                 )
             )
             stats["created"] += 1
+            created_findings.append(finding)
         else:
             from_status = existing.lifecycle_status
             existing.last_seen_at = now
@@ -344,7 +352,7 @@ def ingest_lockfile_findings(
             )
             stats["resolved"] += 1
 
-    return stats
+    return stats, created_findings
 
 
 def build_findings_for_component(

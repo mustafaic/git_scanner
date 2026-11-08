@@ -65,7 +65,7 @@ def test_new_secret_finding_created_as_open(engine):
     session_factory = sessionmaker(bind=engine, future=True, expire_on_commit=False)
     with session_factory() as session:
         run_id = _make_scan_run(session)
-        stats = ingest_secret_findings(session, 1, run_id, [_nf()], is_baseline=True, is_full_scan=False)
+        stats, _created = ingest_secret_findings(session, 1, run_id, [_nf()], is_baseline=True, is_full_scan=False)
         session.commit()
     assert stats == {"created": 1, "updated": 0, "marked_absent": 0}
     with session_factory() as session:
@@ -87,7 +87,7 @@ def test_incremental_scan_does_not_mark_absent_findings_not_seen(engine):
     with session_factory() as session:
         run2 = _make_scan_run(session)
         # Ikinci (incremental) taramada bu secret GORUNMUYOR (yeni commit'lerde yok).
-        stats = ingest_secret_findings(session, 1, run2, [], is_baseline=False, is_full_scan=False)
+        stats, _created = ingest_secret_findings(session, 1, run2, [], is_baseline=False, is_full_scan=False)
         session.commit()
     assert stats["marked_absent"] == 0
     with session_factory() as session:
@@ -107,7 +107,7 @@ def test_full_scan_marks_absent_but_does_not_resolve(engine):
     with session_factory() as session:
         run2 = _make_scan_run(session)
         # Secret koddan kaldirildi, TAM tarama bunu tespit ediyor.
-        stats = ingest_secret_findings(session, 1, run2, [], is_baseline=False, is_full_scan=True)
+        stats, _created = ingest_secret_findings(session, 1, run2, [], is_baseline=False, is_full_scan=True)
         session.commit()
     assert stats["marked_absent"] == 1
     with session_factory() as session:

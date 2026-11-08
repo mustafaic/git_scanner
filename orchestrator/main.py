@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from core.config import Settings, load_settings
@@ -35,7 +35,15 @@ from core.metrics import (
     LAST_SUCCESSFUL_CYCLE_TIMESTAMP,
     QUEUE_LENGTH,
 )
-from core.models import Finding, Job, Repository, SystemHeartbeat
+from core.models import Finding, Job, Repository, ScanRun, SystemHeartbeat
+from core.notifications import (
+    CHANNEL_EMAIL,
+    EVENT_DAILY_DIGEST,
+    SmtpSettings,
+    build_daily_digest_summary,
+    record_and_maybe_send,
+)
+from core.settings_store import NOTIFICATIONS_KEY, get_setting
 from orchestrator.discovery import list_installation_repositories, upsert_repositories
 from orchestrator.extraction import extract_repository
 from orchestrator.github_auth import GitHubAppAuth, load_private_key
@@ -100,6 +108,25 @@ def _repo_has_any_finding(session: Any, repo_id: int) -> bool:
     return session.execute(select(Finding.id).where(Finding.repo_id == repo_id).limit(1)).first() is not None
 
 
+def _build_notification_config(session: Any) -> tuple[Optional[SmtpSettings], List[str]]:
+    """master_prompt.md 5: 'SMTP sunucu parametreleri sunucu config'inde
+    kalir' (core.config/env, BURADA) + 'kanallar admin tarafindan acilip
+    kapatilir' (core.models.Setting, app/routes_settings.py'den yazilir).
+    Ikisi de yoksa (varsayilan) bildirim gonderimi TAMAMEN devre disi --
+    core.notifications.record_and_maybe_send zaten None/bos ile no-op."""
+    notif = get_setting(session, NOTIFICATIONS_KEY, default={}) or {}
+    if not notif.get("email_enabled") or not settings.smtp_host or not settings.smtp_from_address:
+        return None, []
+    recipients = [r for r in notif.get("recipients", []) if r]
+    if not recipients:
+        return None, []
+    smtp_settings = SmtpSettings(
+        host=settings.smtp_host, port=settings.smtp_port, use_tls=settings.smtp_use_tls,
+        from_address=settings.smtp_from_address, username=settings.smtp_username, password=settings.smtp_password,
+    )
+    return smtp_settings, recipients
+
+
 def _process_repo_check_job(job: Job) -> None:
     """Hat A (degisim tespiti + envanter) + anlik Hat B (S2) -- master_prompt.md 3.2/3.3."""
     if _auth is None:
@@ -129,12 +156,14 @@ def _process_repo_check_job(job: Job) -> None:
 
         if scan_run.status in ("success", "partial") and changed_contents:
             db_fresh = is_advisory_data_fresh(session, settings.advisory_max_age_seconds)
+            smtp_settings, notify_recipients = _build_notification_config(session)
             for lockfile_path, (blob_sha, content) in changed_contents.items():
                 run_immediate_match(
                     session, staging_dir, _osv_binary_path, settings.db_cache_dir,
                     repo_id=repo.github_repo_id, lockfile_path=lockfile_path,
                     lockfile_blob_sha=blob_sha,
                     lockfile_content=content, db_is_fresh=db_fresh, is_baseline=is_baseline,
+                    smtp_settings=smtp_settings, notify_recipients=notify_recipients,
                 )
 
         complete_job(session, job.id)
@@ -209,6 +238,39 @@ def _poll_loop() -> None:
         _stop_event.wait(settings.poll_interval_seconds)
 
 
+def _send_daily_digest(session: Any, smtp_settings: Optional[SmtpSettings], notify_recipients: List[str]) -> None:
+    """master_prompt.md 6: 'Diger yeni bulgular, kapananlar, REOPENED ->
+    Gunluk ozet'; 'Bulgu basina mesaj yok, konsolide'. dedup_key=gun bazli
+    -> ayni gun icin ikinci bir cagri (ör. daily_jobs_loop'un erken tekrar
+    tetiklenmesi) idempotent olarak ATLANIR (core.notifications)."""
+    if not smtp_settings or not notify_recipients:
+        return
+    window_start = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=settings.daily_jobs_interval_hours)
+    counts = {
+        "new": session.execute(
+            select(func.count()).select_from(Finding).where(Finding.first_seen_at >= window_start, Finding.baseline.is_(False))
+        ).scalar_one(),
+        "resolved": session.execute(
+            select(func.count()).select_from(Finding).where(Finding.resolved_at >= window_start)
+        ).scalar_one(),
+        "reopened": session.execute(
+            select(func.count()).select_from(Finding).where(Finding.lifecycle_status == "REOPENED", Finding.updated_at >= window_start)
+        ).scalar_one(),
+        "failed_scans": session.execute(
+            select(func.count()).select_from(ScanRun).where(ScanRun.status.in_(["failed", "partial"]), ScanRun.started_at >= window_start)
+        ).scalar_one(),
+        "new_kev": session.execute(
+            select(func.count()).select_from(Finding).where(Finding.kev.is_(True), Finding.first_seen_at >= window_start, Finding.baseline.is_(False))
+        ).scalar_one(),
+    }
+    digest = build_daily_digest_summary(counts)
+    today = dt.datetime.now(dt.timezone.utc).date().isoformat()
+    record_and_maybe_send(
+        session, event_type=EVENT_DAILY_DIGEST, dedup_key=f"daily_digest:{today}", channel=CHANNEL_EMAIL,
+        recipients=notify_recipients, subject=digest["subject"], body=digest["body"], smtp_settings=smtp_settings,
+    )
+
+
 def _run_daily_jobs() -> None:
     staging_dir = Path(settings.staging_dir)
     with session_scope() as session:
@@ -220,7 +282,12 @@ def _run_daily_jobs() -> None:
 
     with session_scope() as session:
         db_fresh = is_advisory_data_fresh(session, settings.advisory_max_age_seconds)
-        run_daily_match(session, staging_dir, _osv_binary_path, settings.db_cache_dir, db_is_fresh=db_fresh)
+        smtp_settings, notify_recipients = _build_notification_config(session)
+        run_daily_match(
+            session, staging_dir, _osv_binary_path, settings.db_cache_dir, db_is_fresh=db_fresh,
+            smtp_settings=smtp_settings, notify_recipients=notify_recipients,
+        )
+        _send_daily_digest(session, smtp_settings, notify_recipients)
         _write_heartbeat(session, "daily_jobs")
 
 

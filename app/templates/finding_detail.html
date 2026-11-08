@@ -16,6 +16,12 @@
     <tr><th>CVSS</th><td>{{ finding.severity_cvss_score if finding.severity_cvss_score is not none else "-" }} ({{ finding.severity_cvss_vector or "-" }}, kaynak: {{ finding.severity_source or "-" }})</td></tr>
     <tr><th>EPSS</th><td>{{ finding.epss_score if finding.epss_score is not none else "-" }} (percentile {{ finding.epss_percentile if finding.epss_percentile is not none else "-" }})</td></tr>
     <tr><th>Fix</th><td>{{ finding.fix_status }} {{ finding.fix_version or "" }}</td></tr>
+    {% if sla %}
+    <tr><th>SLA</th><td>
+      {% if sla.overdue %}<span class="badge badge-OPEN">{{ -sla.days_remaining }} gün gecikmiş</span> (hedef: {{ sla.due_date }})
+      {% else %}{{ sla.days_remaining }} gün kaldı (hedef: {{ sla.due_date }}){% endif %}
+    </td></tr>
+    {% endif %}
     <tr><th>Aliases</th><td>{{ finding.aliases | join(", ") }}</td></tr>
     <tr><th>İlk görülme</th><td>{{ finding.first_seen_at }}</td></tr>
     <tr><th>Son görülme</th><td>{{ finding.last_seen_at }}</td></tr>

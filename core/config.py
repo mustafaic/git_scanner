@@ -51,6 +51,18 @@ class Settings(BaseSettings):
 
     metrics_enabled: bool = True
 
+    # Asama 4: ic SMTP (master_prompt.md 5 "SMTP sunucu parametreleri
+    # sunucu config'inde kalir" -- DB'deki Setting tablosunda SADECE
+    # kanal ac/kapat + alici listesi tutulur, sunucu adresi/kimlik
+    # bilgisi BURADA, env/Docker secret'tan okunur). Bos ise (varsayilan)
+    # e-posta gonderimi devre disi kalir (orchestrator/app bunu kontrol eder).
+    smtp_host: Optional[str] = None
+    smtp_port: int = 587
+    smtp_use_tls: bool = True
+    smtp_username: Optional[str] = None
+    smtp_password: Optional[str] = None
+    smtp_from_address: Optional[str] = None
+
     # Asama 3: panel oturum cerezi (master_prompt.md 5 "Oturum cerezi
     # HttpOnly + Secure + SameSite"). `Secure` HTTPS gerektirir -- yerel
     # docker-compose dev ortami duz HTTP sundugu icin KAPATILABILIR

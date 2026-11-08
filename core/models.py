@@ -504,3 +504,48 @@ class SecretFindingEvent(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+# --- Asama 4: ayarlar (SLA/bildirim) + bildirim idempotency ------------------
+
+
+class Setting(Base):
+    """Admin'in panelden degistirdigi ayarlar (master_prompt.md 6 A10):
+    SLA hedef sureleri, bildirim kanali aç/kapat + alici listesi. SMTP
+    sunucu parametreleri BURADA DEGIL -- sunucu config'inde (core/config.py,
+    env) kalir (master_prompt.md 5: "SMTP sunucu parametreleri sunucu
+    config'inde kalir"). Secret iceren degerler (ör. Teams webhook URL'si)
+    bu tabloda SADECE sifreli yazilmalidir -- su an (Asama 4 part 3) hicbir
+    secret-iceren ayar burada TUTULMUYOR (Teams webhook'u kapsam disi,
+    bkz. docs/ASSUMPTIONS.md)."""
+
+    __tablename__ = "settings"
+
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    value: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+    updated_by_user_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+
+
+class NotificationLog(Base):
+    """master_prompt.md 6 "Gurultu kontrolleri": ayni olay/alici/kanal
+    ucluzu BIR KEZ gonderilir -- uq_notification_log_dedup bunu DB
+    seviyesinde garanti eder (ON CONFLICT DO NOTHING ile idempotent yazim,
+    bkz. core/notifications.py)."""
+
+    __tablename__ = "notification_log"
+    __table_args__ = (
+        UniqueConstraint("dedup_key", "channel", "recipient", name="uq_notification_log_dedup"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    event_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    dedup_key: Mapped[str] = mapped_column(String(300), nullable=False)
+    channel: Mapped[str] = mapped_column(String(20), nullable=False)
+    recipient: Mapped[str] = mapped_column(String(300), nullable=False)
+    subject: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    sent_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

@@ -11,7 +11,7 @@ degistirmez -- sadece confirm_rotation() (admin eylemi) degistirir.
 from __future__ import annotations
 
 import datetime as dt
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -32,7 +32,7 @@ def ingest_secret_findings(
     findings: List[NormalizedSecretFinding],
     is_baseline: bool,
     is_full_scan: bool,
-) -> Dict[str, int]:
+) -> Tuple[Dict[str, int], List[SecretFinding]]:
     """Bu taramanin sonuclarini upsert eder.
 
     `is_full_scan=False` (incremental) ise SADECE yeni/guncellenen bulgular
@@ -42,9 +42,14 @@ def ingest_secret_findings(
     raporlanmaz). SADECE `is_full_scan=True` ise "artik kodda yok"
     (present_in_current_code=False) reconciliation'i yapilir -- ve bu bile
     lifecycle_status'u DEGISTIRMEZ (master_prompt.md 4.4).
+
+    Donen ikinci deger (`created_findings`): BU cagirmada YENI olusturulan
+    SecretFinding'ler -- orchestrator/secret_scan.py bunu A6 "yeni secret"
+    aninda bildirim kararina (core/notifications.py) girdi olarak kullanir.
     """
     now = dt.datetime.now(dt.timezone.utc)
     stats = {"created": 0, "updated": 0, "marked_absent": 0}
+    created_findings: List[SecretFinding] = []
     seen_fingerprints = set()
 
     for nf in findings:
@@ -83,6 +88,7 @@ def ingest_secret_findings(
                 )
             )
             stats["created"] += 1
+            created_findings.append(finding)
         else:
             existing.last_seen_at = now
             existing.file_path = nf.file_path
@@ -119,7 +125,7 @@ def ingest_secret_findings(
             )
             stats["marked_absent"] += 1
 
-    return stats
+    return stats, created_findings
 
 
 def confirm_rotation(

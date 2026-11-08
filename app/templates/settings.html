@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Ayarlar{% endblock %}
+{% block content %}
+<h2>Ayarlar</h2>
+{% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
+
+<div class="card">
+  <h3>SLA hedef süreleri (gün)</h3>
+  <p style="color:#666; font-size:0.85rem;">Şirket politikası -- bulgunun ilk görüldüğü günden itibaren kaç gün içinde kapatılması hedeflendiği. Hiçbir bulguyu otomatik kapatmaz, sadece gecikme göstergesi/sıralama içindir.</p>
+  <form method="post" action="/settings/sla">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="kev">KEV'de olan (aktif sömürülen)</label>
+    <input type="number" id="kev" name="kev" min="1" value="{{ sla_days.kev }}" style="max-width:120px;">
+    <label for="cvss_9">CVSS ≥ 9</label>
+    <input type="number" id="cvss_9" name="cvss_9" min="1" value="{{ sla_days.cvss_9 }}" style="max-width:120px;">
+    <label for="cvss_7">CVSS ≥ 7</label>
+    <input type="number" id="cvss_7" name="cvss_7" min="1" value="{{ sla_days.cvss_7 }}" style="max-width:120px;">
+    <label for="cvss_4">CVSS ≥ 4</label>
+    <input type="number" id="cvss_4" name="cvss_4" min="1" value="{{ sla_days.cvss_4 }}" style="max-width:120px;">
+    <label for="default">Diğerleri (skor yok/düşük)</label>
+    <input type="number" id="default" name="default" min="1" value="{{ sla_days.default }}" style="max-width:120px;">
+    <p><button class="btn btn-primary" type="submit">SLA'yı kaydet</button></p>
+  </form>
+</div>
+
+<div class="card">
+  <h3>İç e-posta bildirimleri</h3>
+  <p style="color:#666; font-size:0.85rem;">Varsayılan KAPALI (master_prompt.md 5: "kanallar admin tarafından açılıp kapatılır, varsayılan kapalı"). SMTP sunucu adresi/kimlik bilgisi sunucu config'inde (env) kalır, burada SADECE açık/kapalı ve alıcı listesi var.</p>
+  <form method="post" action="/settings/notifications">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label><input type="checkbox" name="email_enabled" value="true" {% if notifications.email_enabled %}checked{% endif %}> E-posta bildirimlerini etkinleştir</label>
+    <label for="recipients">Alıcılar (virgül veya satır ile ayrılmış)</label>
+    <textarea id="recipients" name="recipients" rows="3" style="width:100%; max-width:480px;">{{ notifications.recipients | join(", ") }}</textarea>
+    <p><button class="btn btn-primary" type="submit">Bildirim ayarlarını kaydet</button></p>
+  </form>
+  <p style="color:#666; font-size:0.8rem;">Teams webhook entegrasyonu henüz eklenmedi (bkz. docs/ASSUMPTIONS.md) -- sadece iç SMTP destekleniyor.</p>
+</div>
+{% endblock %}

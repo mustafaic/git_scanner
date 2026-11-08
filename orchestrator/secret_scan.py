@@ -25,6 +25,13 @@ from sqlalchemy.orm import Session
 
 from adapters.gitleaks import parse as parse_gitleaks_output
 from core.models import Repository, ScanRun
+from core.notifications import (
+    CHANNEL_EMAIL,
+    EVENT_NEW_SECRET_FINDING,
+    SmtpSettings,
+    record_and_maybe_send,
+    should_notify_new_secret,
+)
 from core.secret_finding_model import ingest_secret_findings
 from core.worker_protocol import (
     WorkerJob,
@@ -149,6 +156,25 @@ def _latest_successful_secret_scan(session: Session, repo_id: int) -> Optional[S
     ).scalar_one_or_none()
 
 
+def _notify_new_secret_findings(
+    session: Session, created_findings, smtp_settings: Optional[SmtpSettings], notify_recipients: Optional[List[str]],
+) -> None:
+    """master_prompt.md 6: 'yeni secret ... (baseline degil) -> ANINDA'.
+    Ham secret degeri BURADA DA asla kullanilmaz -- sadece kural/dosya/repo
+    bilgisi (SecretFinding'de ham deger hic SUTUN OLARAK yok)."""
+    if not smtp_settings or not notify_recipients:
+        return
+    for finding in created_findings:
+        if not should_notify_new_secret(is_baseline=finding.baseline):
+            continue
+        subject = f"[Kritik] Yeni secret bulgusu -- {finding.rule_id}"
+        body = f"Repo ID: {finding.repo_id}\nDosya: {finding.file_path}\nKural: {finding.rule_id}\n"
+        record_and_maybe_send(
+            session, event_type=EVENT_NEW_SECRET_FINDING, dedup_key=f"secret_finding:{finding.id}",
+            channel=CHANNEL_EMAIL, recipients=notify_recipients, subject=subject, body=body, smtp_settings=smtp_settings,
+        )
+
+
 def scan_repository_secrets(
     session: Session,
     staging_dir: Path,
@@ -157,6 +183,8 @@ def scan_repository_secrets(
     auth: GitHubAppAuth,
     repo: Repository,
     scanner_version: str,
+    smtp_settings: Optional[SmtpSettings] = None,
+    notify_recipients: Optional[List[str]] = None,
 ) -> ScanRun:
     """Bir repo icin secret taramasini calistirir (mirror fetch + gitleaks +
     ingest). master_prompt.md 4.4: force-push, tam gecmis yeniden yazimi
@@ -216,9 +244,10 @@ def scan_repository_secrets(
         scan_run.finished_at = dt.datetime.now(dt.timezone.utc)
         return scan_run
 
-    stats = ingest_secret_findings(
+    stats, created_findings = ingest_secret_findings(
         session, repo.github_repo_id, scan_run.id, findings, is_baseline=is_baseline, is_full_scan=full_rescan
     )
+    _notify_new_secret_findings(session, created_findings, smtp_settings, notify_recipients)
     scan_run.details = {**scan_run.details, **stats}
     repo.last_scanned_sha = new_head_sha
     scan_run.finished_at = dt.datetime.now(dt.timezone.utc)

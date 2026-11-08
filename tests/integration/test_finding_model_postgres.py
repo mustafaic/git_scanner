@@ -75,7 +75,7 @@ def test_new_finding_is_created_as_open_and_baseline(engine):
     session_factory = sessionmaker(bind=engine, future=True)
     with session_factory() as session:
         run_id = _make_scan_run(session)
-        stats = ingest_lockfile_findings(
+        stats, _created = ingest_lockfile_findings(
             session, repo_id=1, lockfile_path="package-lock.json", scan_run_id=run_id,
             scan_run_status="success", built_findings=[_bf()], is_baseline=True,
         )
@@ -96,7 +96,7 @@ def test_unchanged_finding_is_updated_not_duplicated(engine):
         session.commit()
     with session_factory() as session:
         run2 = _make_scan_run(session)
-        stats = ingest_lockfile_findings(session, 1, "package-lock.json", run2, "success", [_bf()], is_baseline=False)
+        stats, _created = ingest_lockfile_findings(session, 1, "package-lock.json", run2, "success", [_bf()], is_baseline=False)
         session.commit()
     assert stats == {"created": 0, "updated": 1, "resolved": 0, "reopened": 0}
     with session_factory() as session:
@@ -113,7 +113,7 @@ def test_finding_resolved_when_absent_on_successful_scan(engine):
     with session_factory() as session:
         run2 = _make_scan_run(session, status="success")
         # Ayni lockfile icin yeni basarili tarama, ama bu sefer ZAFIYET YOK (upgrade edilmis).
-        stats = ingest_lockfile_findings(session, 1, "package-lock.json", run2, "success", [], is_baseline=False)
+        stats, _created = ingest_lockfile_findings(session, 1, "package-lock.json", run2, "success", [], is_baseline=False)
         session.commit()
     assert stats["resolved"] == 1
     with session_factory() as session:
@@ -133,7 +133,7 @@ def test_finding_not_resolved_on_partial_or_failed_scan(engine):
     for bad_status in ("partial", "failed", "needs_review"):
         with session_factory() as session:
             run2 = _make_scan_run(session, status=bad_status)
-            stats = ingest_lockfile_findings(session, 1, "package-lock.json", run2, bad_status, [], is_baseline=False)
+            stats, _created = ingest_lockfile_findings(session, 1, "package-lock.json", run2, bad_status, [], is_baseline=False)
             session.commit()
         assert stats["resolved"] == 0, f"status={bad_status} ile bulgu kapanmamali"
 
@@ -160,7 +160,7 @@ def test_resolved_finding_reopens_when_seen_again(engine):
     # Ayni zafiyet tekrar ortaya cikti (ornegin downgrade edildi).
     with session_factory() as session:
         run3 = _make_scan_run(session)
-        stats = ingest_lockfile_findings(session, 1, "package-lock.json", run3, "success", [_bf()], is_baseline=False)
+        stats, _created = ingest_lockfile_findings(session, 1, "package-lock.json", run3, "success", [_bf()], is_baseline=False)
         session.commit()
     assert stats["reopened"] == 1
     with session_factory() as session:
@@ -200,7 +200,7 @@ def test_different_repos_do_not_resolve_each_others_findings(engine):
         run2 = ScanRun(run_type="immediate_match", repo_id=2, status="success")
         session.add(run2)
         session.flush()
-        stats = ingest_lockfile_findings(session, 2, "other/package-lock.json", run2.id, "success", [], is_baseline=False)
+        stats, _created = ingest_lockfile_findings(session, 2, "other/package-lock.json", run2.id, "success", [], is_baseline=False)
         session.commit()
     assert stats["resolved"] == 0  # repo 1'in bulgusuna dokunulmamali
 

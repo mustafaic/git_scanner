@@ -30,6 +30,7 @@ from app import (
     routes_findings,
     routes_repos,
     routes_secrets,
+    routes_settings,
     routes_tokens,
     routes_users,
 )
@@ -63,6 +64,7 @@ app.include_router(routes_tokens.router)
 app.include_router(routes_actions.router)
 app.include_router(routes_coverage.router)
 app.include_router(routes_users.router)
+app.include_router(routes_settings.router)
 app.include_router(api.router)
 
 

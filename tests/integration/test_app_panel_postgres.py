@@ -51,6 +51,7 @@ def _clean(engine):
         for table in (
             "secret_finding_events", "secret_findings", "finding_events", "finding_sources", "findings",
             "api_tokens", "audit_log", "sessions", "users", "repositories", "scan_triggers", "scan_runs",
+            "notification_log", "settings",
         ):
             conn.execute(text(f"DELETE FROM {table}"))
     yield
@@ -423,6 +424,8 @@ def test_viewer_can_only_reach_own_token_write_endpoints_all_other_writes_blocke
         ("post", "/users", {"username": "sneaky", "password": "DoesntMatter!123", "csrf_token": csrf}),
         ("post", "/users/1/toggle-active", {"csrf_token": csrf}),
         ("post", "/users/1/reset-password", {"new_password": "DoesntMatter!123", "csrf_token": csrf}),
+        ("post", "/settings/sla", {"kev": "1", "cvss_9": "3", "cvss_7": "14", "cvss_4": "60", "default": "90", "csrf_token": csrf}),
+        ("post", "/settings/notifications", {"email_enabled": "true", "recipients": "x@internal", "csrf_token": csrf}),
     ]
     for method, path, data in write_requests:
         resp = getattr(client, method)(path, data=data, follow_redirects=False)
@@ -432,6 +435,8 @@ def test_viewer_can_only_reach_own_token_write_endpoints_all_other_writes_blocke
     assert audit_resp.status_code == 403
     users_resp = client.get("/users")
     assert users_resp.status_code == 403
+    settings_resp = client.get("/settings")
+    assert settings_resp.status_code == 403
 
     # TEK istisna (kullanici karari): kendi read-only API token'ini yonetmek.
     token_resp = client.post("/tokens", data={"name": "viewer-own-token", "expires_in_days": "", "csrf_token": csrf})
@@ -719,3 +724,104 @@ def test_audit_log_export_is_admin_only(client, engine):
     _login(client, "viewer", VIEWER_PASSWORD)
     resp = client.get("/audit-log/export.csv")
     assert resp.status_code == 403
+
+
+# --- Stage 4 part 3: A10 settings (SLA + notifications) + A8 SLA display ---
+
+def test_settings_page_shows_defaults_when_unset(client, engine):
+    _, secret = _make_admin(engine)
+    code = pyotp.TOTP(secret).now()
+    _login(client, "admin", ADMIN_PASSWORD, code)
+    resp = client.get("/settings")
+    assert resp.status_code == 200
+    assert 'value="1"' in resp.text  # kev varsayilani
+
+
+def test_update_sla_settings_persists_and_is_audited(client, engine):
+    admin_id, secret = _make_admin(engine)
+    code = pyotp.TOTP(secret).now()
+    _login(client, "admin", ADMIN_PASSWORD, code)
+    csrf = _csrf_token(client)
+
+    resp = client.post(
+        "/settings/sla", data={"kev": "2", "cvss_9": "5", "cvss_7": "20", "cvss_4": "70", "default": "100", "csrf_token": csrf},
+    )
+    assert resp.status_code == 200
+    assert "kaydedildi" in resp.text
+
+    with engine.begin() as conn:
+        value = conn.execute(text("SELECT value FROM settings WHERE key='sla_days'")).scalar_one()
+        action = conn.execute(text("SELECT action FROM audit_log WHERE action='settings_sla_updated'")).scalar_one()
+    assert value["kev"] == 2
+    assert action == "settings_sla_updated"
+
+
+def test_update_sla_settings_rejects_non_positive_values(client, engine):
+    _, secret = _make_admin(engine)
+    code = pyotp.TOTP(secret).now()
+    _login(client, "admin", ADMIN_PASSWORD, code)
+    csrf = _csrf_token(client)
+    resp = client.post(
+        "/settings/sla", data={"kev": "0", "cvss_9": "5", "cvss_7": "20", "cvss_4": "70", "default": "100", "csrf_token": csrf},
+    )
+    assert resp.status_code == 400
+
+
+def test_update_notification_settings_persists_recipients_and_is_audited(client, engine):
+    _, secret = _make_admin(engine)
+    code = pyotp.TOTP(secret).now()
+    _login(client, "admin", ADMIN_PASSWORD, code)
+    csrf = _csrf_token(client)
+
+    resp = client.post(
+        "/settings/notifications",
+        data={"email_enabled": "true", "recipients": "a@internal, b@internal\nc@internal", "csrf_token": csrf},
+    )
+    assert resp.status_code == 200
+
+    with engine.begin() as conn:
+        value = conn.execute(text("SELECT value FROM settings WHERE key='notifications'")).scalar_one()
+        action = conn.execute(text("SELECT action FROM audit_log WHERE action='settings_notifications_updated'")).scalar_one()
+    assert value["email_enabled"] is True
+    assert set(value["recipients"]) == {"a@internal", "b@internal", "c@internal"}
+    assert action == "settings_notifications_updated"
+
+
+def test_findings_list_shows_overdue_sla_badge_with_custom_settings(client, engine):
+    """Kritik senaryo: SLA 1 gune ayarlanmis + bulgu 10 gun once gorulmus
+    -> 'gecikmis' rozeti gorunmeli (master_prompt.md 6 A8 'gecikenler listesi')."""
+    admin_id, secret = _make_admin(engine)
+    from sqlalchemy.orm import sessionmaker
+
+    Session = sessionmaker(bind=engine, future=True)
+    with Session() as session:
+        session.add(Repository(github_repo_id=40, full_name="acme/sla-check", owner="acme", name="sla-check", default_branch="main", visibility="private"))
+        finding = Finding(
+            repo_id=40, lockfile_path="package-lock.json", ecosystem="npm", package_name="lodash",
+            version="4.17.15", canonical_vulnerability_id="GHSA-sla-1", verification_status="VERIFIED",
+            lifecycle_status="OPEN", severity_cvss_score=9.5,
+        )
+        session.add(finding)
+        session.commit()
+        finding_id = finding.id
+
+    import datetime as dt
+
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE findings SET first_seen_at = :t WHERE id=:i"),
+            {"t": dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=10), "i": finding_id},
+        )
+
+    code = pyotp.TOTP(secret).now()
+    _login(client, "admin", ADMIN_PASSWORD, code)
+    csrf = _csrf_token(client)
+    # SLA'yi KEV disinda herkes icin 1 gune cekiyoruz -- CVSS 9.5 "cvss_9" dilimine girer.
+    client.post("/settings/sla", data={"kev": "1", "cvss_9": "1", "cvss_7": "14", "cvss_4": "60", "default": "90", "csrf_token": csrf})
+
+    resp = client.get("/findings")
+    assert resp.status_code == 200
+    assert "gün gecikmiş" in resp.text
+
+    detail_resp = client.get(f"/findings/{finding_id}")
+    assert "gün gecikmiş" in detail_resp.text

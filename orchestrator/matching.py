@@ -35,7 +35,14 @@ from core.finding_model import (
     normalize_version_for_ecosystem,
 )
 from core.lockfile_parser import ParsedComponent
-from core.models import AdvisoryMirrorSync, ComponentSnapshot, ScanRun
+from core.models import AdvisoryMirrorSync, ComponentSnapshot, Finding, ScanRun
+from core.notifications import (
+    CHANNEL_EMAIL,
+    EVENT_CRITICAL_SCA_FINDING,
+    SmtpSettings,
+    record_and_maybe_send,
+    should_notify_critical_sca,
+)
 from core.worker_protocol import (
     WorkerJob,
     clear_staging,
@@ -93,6 +100,31 @@ def is_advisory_data_fresh(session: Session, max_age_seconds: int) -> bool:
     return True
 
 
+def _notify_critical_sca_findings(
+    session: Session, created_findings: List[Finding], smtp_settings: Optional[SmtpSettings], notify_recipients: Optional[List[str]],
+) -> None:
+    """master_prompt.md 6 'Iletisim modeli': 'KEV'de olan veya CVSS >= 9
+    SCA bulgusu (baseline degil) -> ANINDA'. Kanal konfigure/acik degilse
+    (smtp_settings None veya alici yoksa) core.notifications zaten no-op
+    doner -- burada erken cikis SADECE gereksiz dongu/sorguyu atlar."""
+    if not smtp_settings or not notify_recipients:
+        return
+    for finding in created_findings:
+        cvss = float(finding.severity_cvss_score) if finding.severity_cvss_score is not None else None
+        if not should_notify_critical_sca(kev=finding.kev, cvss_score=cvss, is_baseline=finding.baseline):
+            continue
+        subject = f"[Kritik] {finding.package_name} {finding.version} -- {finding.canonical_vulnerability_id}"
+        body = (
+            f"Repo ID: {finding.repo_id}\nLockfile: {finding.lockfile_path}\n"
+            f"Paket: {finding.package_name}@{finding.version}\nZafiyet: {finding.canonical_vulnerability_id}\n"
+            f"CVSS: {cvss if cvss is not None else '-'}\nKEV: {finding.kev}\n"
+        )
+        record_and_maybe_send(
+            session, event_type=EVENT_CRITICAL_SCA_FINDING, dedup_key=f"finding:{finding.id}",
+            channel=CHANNEL_EMAIL, recipients=notify_recipients, subject=subject, body=body, smtp_settings=smtp_settings,
+        )
+
+
 def run_immediate_match(
     session: Session,
     staging_dir: Path,
@@ -104,6 +136,8 @@ def run_immediate_match(
     lockfile_content: bytes,
     db_is_fresh: bool,
     is_baseline: bool = False,
+    smtp_settings: Optional[SmtpSettings] = None,
+    notify_recipients: Optional[List[str]] = None,
 ) -> ScanRun:
     """Bir repo'nun TEK bir degisen lockfile'i icin anlik eslestirme
     (master_prompt.md 3.3: "commit sonrasi aninda eslestirme")."""
@@ -155,7 +189,8 @@ def run_immediate_match(
     # DB bayatsa Hat B basariyla calismis olsa da bulgu KAPATILAMAZ (4.6);
     # ingest_lockfile_findings'e "success" DISINDA bir durum veririz.
     ingest_status = "success" if db_is_fresh else "needs_review"
-    stats = ingest_lockfile_findings(session, repo_id, lockfile_path, scan_run.id, ingest_status, built, is_baseline)
+    stats, created_findings = ingest_lockfile_findings(session, repo_id, lockfile_path, scan_run.id, ingest_status, built, is_baseline)
+    _notify_critical_sca_findings(session, created_findings, smtp_settings, notify_recipients)
     scan_run.details = {**stats, "db_fresh": db_is_fresh}
     scan_run.finished_at = dt.datetime.now(dt.timezone.utc)
     return scan_run
@@ -176,6 +211,7 @@ def build_synthetic_sbom(components: List[Tuple[str, str, str, Optional[str]]]) 
 
 def run_daily_match(
     session: Session, staging_dir: Path, osv_binary_path: str, db_cache_dir: str, db_is_fresh: bool,
+    smtp_settings: Optional[SmtpSettings] = None, notify_recipients: Optional[List[str]] = None,
 ) -> ScanRun:
     """Gunluk tam eslestirme: benzersiz bilesen kumesi -> sentetik SBOM ->
     TEK worker cagrisi -> tum (repo,lockfile) ikililerine dagitim."""
@@ -233,7 +269,8 @@ def run_daily_match(
             built.extend(build_findings_for_component(repo_id, parsed, match))
         for bf in built:
             bf.lockfile_path = lockfile_path
-        stats = ingest_lockfile_findings(session, repo_id, lockfile_path, scan_run.id, ingest_status, built, is_baseline=False)
+        stats, created_findings = ingest_lockfile_findings(session, repo_id, lockfile_path, scan_run.id, ingest_status, built, is_baseline=False)
+        _notify_critical_sca_findings(session, created_findings, smtp_settings, notify_recipients)
         for key in totals:
             totals[key] += stats[key]
 

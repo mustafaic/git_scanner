@@ -14,7 +14,7 @@
 <p><a href="/findings/export.csv?status={{ status_filter }}">CSV indir</a> · <a href="/findings/export.json?status={{ status_filter }}">JSON indir</a></p>
 <table>
   <thead>
-    <tr><th>Repo</th><th>Paket</th><th>Sürüm</th><th>Zafiyet</th><th>CVSS</th><th>KEV</th><th>Fix</th><th>Durum</th></tr>
+    <tr><th>Repo</th><th>Paket</th><th>Sürüm</th><th>Zafiyet</th><th>CVSS</th><th>KEV</th><th>Fix</th><th>Durum</th><th>SLA</th></tr>
   </thead>
   <tbody>
     {% for f in findings %}
@@ -27,9 +27,16 @@
       <td>{% if f.kev %}⚠️ KEV{% endif %}</td>
       <td>{{ f.fix_status }}</td>
       <td><span class="badge badge-{{ f.lifecycle_status }}">{{ f.lifecycle_status }}</span></td>
+      <td>
+        {% set sla = sla_by_id.get(f.id) %}
+        {% if sla %}
+          {% if sla.overdue %}<span class="badge badge-OPEN">{{ -sla.days_remaining }} gün gecikmiş</span>
+          {% else %}{{ sla.days_remaining }} gün kaldı{% endif %}
+        {% else %}-{% endif %}
+      </td>
     </tr>
     {% else %}
-    <tr><td colspan="8">Bu filtreye uyan bulgu yok.</td></tr>
+    <tr><td colspan="9">Bu filtreye uyan bulgu yok.</td></tr>
     {% endfor %}
   </tbody>
 </table>

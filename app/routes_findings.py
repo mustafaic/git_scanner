@@ -17,8 +17,18 @@ from app.auth_service import record_audit
 from app.csrf import require_csrf
 from app.deps import get_db, get_repo_names, render_page, require_admin, require_user
 from core.models import Finding, FindingEvent, User
+from core.settings_store import SLA_DAYS_KEY, get_setting
+from core.sla import compute_due_date, days_remaining, is_overdue, merged_sla_days
 
 router = APIRouter()
+
+
+def _sla_info(finding: Finding, sla_days: dict) -> dict:
+    due = compute_due_date(
+        kev=finding.kev, cvss_score=float(finding.severity_cvss_score) if finding.severity_cvss_score is not None else None,
+        first_seen_at=finding.first_seen_at, sla_days=sla_days,
+    )
+    return {"due_date": due, "overdue": is_overdue(due), "days_remaining": days_remaining(due)}
 
 # master_prompt.md 4.3: RESOLVED sadece eslestirme motorunun (sanity-gate
 # gecmis, taze advisory DB ile) karari -- panelden elle set EDILEMEZ.
@@ -38,9 +48,14 @@ def list_findings(request: Request, status: str = "", db: DbSession = Depends(ge
     query = query.order_by(Finding.kev.desc(), Finding.severity_cvss_score.desc().nullslast(), Finding.first_seen_at.desc())
     findings = db.execute(query.limit(500)).scalars().all()
     repo_names = get_repo_names(db, [f.repo_id for f in findings])
+    sla_days = merged_sla_days(get_setting(db, SLA_DAYS_KEY))
+    sla_by_id = {
+        f.id: _sla_info(f, sla_days) for f in findings if f.lifecycle_status in ("OPEN", "IN_PROGRESS", "REOPENED")
+    }
     return render_page(
         request, "findings.html",
-        {"findings": findings, "repo_names": repo_names, "status_filter": status, "allowed_statuses": sorted(_MANUAL_ALLOWED_STATUSES | {"RESOLVED"})},
+        {"findings": findings, "repo_names": repo_names, "status_filter": status,
+         "allowed_statuses": sorted(_MANUAL_ALLOWED_STATUSES | {"RESOLVED"}), "sla_by_id": sla_by_id},
         user=user,
     )
 
@@ -54,10 +69,12 @@ def finding_detail(request: Request, finding_id: int, db: DbSession = Depends(ge
     events = db.execute(
         select(FindingEvent).where(FindingEvent.finding_id == finding_id).order_by(FindingEvent.created_at.desc())
     ).scalars().all()
+    sla_days = merged_sla_days(get_setting(db, SLA_DAYS_KEY))
+    sla = _sla_info(finding, sla_days) if finding.lifecycle_status in ("OPEN", "IN_PROGRESS", "REOPENED") else None
     return render_page(
         request, "finding_detail.html",
         {"finding": finding, "repo_name": repo_names.get(finding.repo_id, str(finding.repo_id)),
-         "events": events, "manual_statuses": sorted(_MANUAL_ALLOWED_STATUSES)},
+         "events": events, "manual_statuses": sorted(_MANUAL_ALLOWED_STATUSES), "sla": sla},
         user=user,
     )
 
