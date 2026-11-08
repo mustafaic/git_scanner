@@ -11,6 +11,7 @@
     {% endfor %}
   </select>
 </form>
+<p><a href="/findings/export.csv?status={{ status_filter }}">CSV indir</a> · <a href="/findings/export.json?status={{ status_filter }}">JSON indir</a></p>
 <table>
   <thead>
     <tr><th>Repo</th><th>Paket</th><th>Sürüm</th><th>Zafiyet</th><th>CVSS</th><th>KEV</th><th>Fix</th><th>Durum</th></tr>

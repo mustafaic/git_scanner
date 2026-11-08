@@ -26,6 +26,7 @@ from app import (
     routes_auth,
     routes_coverage,
     routes_dashboard,
+    routes_export,
     routes_findings,
     routes_repos,
     routes_secrets,
@@ -50,6 +51,11 @@ app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 app.include_router(routes_auth.router)
 app.include_router(routes_dashboard.router)
 app.include_router(routes_repos.router)
+# NOT: export router'i {finding_id}/{secret_id} path-parametreli router'lardan
+# ONCE register edilmeli -- Starlette rotalari eklenme sirasina gore dener,
+# "/findings/export.csv" "/findings/{finding_id}"'den SONRA gelirse "export.csv"
+# finding_id'ye int donusturme hatasiyla (422) eslesmeye calisilirdi.
+app.include_router(routes_export.router)
 app.include_router(routes_findings.router)
 app.include_router(routes_secrets.router)
 app.include_router(routes_audit.router)

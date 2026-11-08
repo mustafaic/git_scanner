@@ -634,3 +634,88 @@ def test_coverage_page_surfaces_lockfile_less_partial_and_lagging_signals(client
     assert "acme/no-lockfile" in resp.text
     assert "acme/partial-scan" in resp.text
     assert "acme/never-scanned" in resp.text
+
+
+# --- Stage 4 part 2: A9 CSV/JSON export -------------------------------------
+
+def test_findings_export_csv_and_json_contain_expected_data(client, engine):
+    admin_id, secret = _make_admin(engine)
+    from sqlalchemy.orm import sessionmaker
+
+    Session = sessionmaker(bind=engine, future=True)
+    with Session() as session:
+        session.add(Repository(github_repo_id=30, full_name="acme/export-check", owner="acme", name="export-check", default_branch="main", visibility="private"))
+        session.add(Finding(
+            repo_id=30, lockfile_path="package-lock.json", ecosystem="npm", package_name="lodash",
+            version="4.17.15", canonical_vulnerability_id="GHSA-export-1", verification_status="VERIFIED",
+            lifecycle_status="OPEN",
+        ))
+        session.commit()
+
+    code = pyotp.TOTP(secret).now()
+    _login(client, "admin", ADMIN_PASSWORD, code)
+
+    csv_resp = client.get("/findings/export.csv")
+    assert csv_resp.status_code == 200
+    assert csv_resp.headers["content-type"].startswith("text/csv")
+    assert "attachment" in csv_resp.headers["content-disposition"]
+    assert "acme/export-check" in csv_resp.text
+    assert "GHSA-export-1" in csv_resp.text
+
+    json_resp = client.get("/findings/export.json")
+    assert json_resp.status_code == 200
+    body = json_resp.json()
+    assert any(row["canonical_vulnerability_id"] == "GHSA-export-1" for row in body)
+
+
+def test_findings_detail_route_still_works_after_adding_export_routes(client, engine):
+    """Route siralama regresyon testi: /findings/export.csv eklenmesi
+    /findings/{finding_id}'i BOZMAMALI (bkz. app/main.py router sira notu)."""
+    _, secret = _make_admin(engine)
+    from sqlalchemy.orm import sessionmaker
+
+    Session = sessionmaker(bind=engine, future=True)
+    with Session() as session:
+        session.add(Repository(github_repo_id=31, full_name="acme/route-order", owner="acme", name="route-order", default_branch="main", visibility="private"))
+        finding = Finding(
+            repo_id=31, lockfile_path="package-lock.json", ecosystem="npm", package_name="lodash",
+            version="4.17.15", canonical_vulnerability_id="GHSA-route-1", verification_status="VERIFIED",
+            lifecycle_status="OPEN",
+        )
+        session.add(finding)
+        session.commit()
+        finding_id = finding.id
+
+    code = pyotp.TOTP(secret).now()
+    _login(client, "admin", ADMIN_PASSWORD, code)
+    resp = client.get(f"/findings/{finding_id}")
+    assert resp.status_code == 200
+    assert "GHSA-route-1" in resp.text
+
+
+def test_secrets_export_csv_never_contains_raw_secret(client, engine):
+    admin_id, secret = _make_admin(engine)
+    from sqlalchemy.orm import sessionmaker
+
+    Session = sessionmaker(bind=engine, future=True)
+    with Session() as session:
+        session.add(Repository(github_repo_id=32, full_name="acme/secret-export", owner="acme", name="secret-export", default_branch="main", visibility="private"))
+        session.add(SecretFinding(
+            repo_id=32, rule_id="github-pat", file_path="settings.py",
+            custom_fingerprint="fp-export-check", secret_content_hash="hash-export-check", lifecycle_status="OPEN",
+        ))
+        session.commit()
+
+    code = pyotp.TOTP(secret).now()
+    _login(client, "admin", ADMIN_PASSWORD, code)
+    resp = client.get("/secrets/export.csv")
+    assert resp.status_code == 200
+    assert "acme/secret-export" in resp.text
+    assert "hash-export-check" not in resp.text  # hash SUTUNU export'ta YOK (ihtiyac yok)
+
+
+def test_audit_log_export_is_admin_only(client, engine):
+    _make_viewer(engine)
+    _login(client, "viewer", VIEWER_PASSWORD)
+    resp = client.get("/audit-log/export.csv")
+    assert resp.status_code == 403
