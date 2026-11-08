@@ -159,3 +159,26 @@ bu istisnayı ve TÜM diğer yazma uç noktalarının (bulgu durumu, secret
 rotasyonu, elle tetikleme, audit log görüntüleme) viewer için 403 ile
 reddedildiğini doğrular.
 
+## 12. A10 kullanıcı yönetimi paneli: admin oluşturma ve TOTP sıfırlama kapsam dışı (2026-11-08)
+
+**Karar:** master_prompt.md 6 (A10) "kullanıcı oluştur/devre dışı bırak/rol
+ver/parola ve TOTP sıfırla" özelliğini panelden (`/users`) sadece
+**viewer** hesapları için uyguladık: oluşturma, aktif/pasif, parola
+sıfırlama. Yeni bir **admin** hesabı oluşturmak ve TOTP sıfırlamak
+(herhangi bir rol için) panelden YAPILAMAZ, `tools/create_admin.py`
+(sunucu CLI) gerektirir.
+
+**Gerekçe:** Her iki işlem de bir "sır paylaşma seremonisi" içerir (TOTP
+secret/provisioning URI + tek-seferlik kurtarma kodları) ve bunu web
+üzerinden güvenli şekilde iletecek bir dışarıdan-kanal yok -- admin'in
+ekranında beliren bir sırrı başka bir kullanıcıya web üzerinden
+göstermenin kendisi bir sızıntı riski. CLI zaten sunucuya fiziksel/SSH
+erişimi olan birinin çalıştırdığı, doğal olarak güvenli bir kanaldır
+(mevcut "ilk admin CLI ile oluşturulur" kuralıyla simetrik).
+
+**Yeniden değerlendirme noktası:** Panelden admin oluşturma gerekirse,
+QR kod render'ı (`qrcode` paketi, yeni bağımlılık) + bir "TOTP kurulumu
+bekleniyor" ara durumu (yeni kullanıcı ilk girişte zorla TOTP enroll
+eder) gerekir -- bu Aşama 4/5'te ayrıca değerlendirilebilir, şu an MVP
+kapsamı dışında tutuldu (kural 11).
+
