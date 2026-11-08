@@ -10,13 +10,14 @@ from typing import Iterator, Optional
 
 from fastapi import Depends, HTTPException, Request, Response
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
 from app.auth_service import get_session_user
 from app.csrf import ensure_csrf_token, set_csrf_cookie
 from core.config import load_settings
 from core.db import session_scope
-from core.models import User
+from core.models import Repository, User
 
 SESSION_COOKIE_NAME = "session_id"
 
@@ -51,6 +52,15 @@ def require_admin(user: User = Depends(require_user)) -> User:
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="admin_required")
     return user
+
+
+def get_repo_names(db: DbSession, repo_ids: list[int]) -> dict[int, str]:
+    if not repo_ids:
+        return {}
+    rows = db.execute(
+        select(Repository.github_repo_id, Repository.full_name).where(Repository.github_repo_id.in_(repo_ids))
+    ).all()
+    return {row[0]: row[1] for row in rows}
 
 
 def render_page(

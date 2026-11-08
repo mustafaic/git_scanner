@@ -12,6 +12,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from core.lockfile_parser import (  # noqa: E402
+    build_install_hint,
+    is_safe_package_name,
+    is_safe_version_string,
     parse_cargo_lock,
     parse_composer_lock,
     parse_gemfile_lock,
@@ -164,3 +167,52 @@ def test_parse_gradle_lockfile_group_artifact_version():
     names_versions = {(c.name, c.version) for c in components}
     assert ("org.slf4j:slf4j-api", "1.7.36") in names_versions
     assert components[0].purl.startswith("pkg:maven/org.slf4j/slf4j-api@")
+
+
+# --- A1 guvenli komut ipucu (master_prompt.md 5, 6) -------------------------
+
+def test_is_safe_package_name_accepts_normal_npm_name():
+    assert is_safe_package_name("npm", "lodash") is True
+    assert is_safe_package_name("npm", "@babel/core") is True
+
+
+def test_is_safe_package_name_rejects_shell_injection_attempt():
+    assert is_safe_package_name("npm", "lodash; rm -rf /") is False
+    assert is_safe_package_name("npm", "lodash`whoami`") is False
+    assert is_safe_package_name("npm", "lodash && curl evil.example") is False
+
+
+def test_is_safe_package_name_rejects_unknown_ecosystem():
+    assert is_safe_package_name("totally-unknown-ecosystem", "lodash") is False
+
+
+def test_is_safe_version_string_accepts_normal_versions():
+    assert is_safe_version_string("4.17.19") is True
+    assert is_safe_version_string("1.2.3-rc.1+build.5") is True
+
+
+def test_is_safe_version_string_rejects_injection_attempt():
+    assert is_safe_version_string("4.17.19; rm -rf /") is False
+    assert is_safe_version_string("4.17.19 && whoami") is False
+
+
+def test_build_install_hint_for_npm():
+    assert build_install_hint("npm", "lodash", "4.17.19") == "npm install lodash@4.17.19"
+
+
+def test_build_install_hint_for_pypi():
+    assert build_install_hint("PyPI", "django", "4.2.1") == "pip install django==4.2.1"
+
+
+def test_build_install_hint_returns_none_for_malicious_package_name():
+    """KRITIK GUVENLIK TESTI: master_prompt.md 5 -- dogrulanamayan paket adi
+    icin ipucu HIC URETILMEZ (kopyala-yapistir komut enjeksiyonu riski)."""
+    assert build_install_hint("npm", "lodash; rm -rf /", "4.17.19") is None
+
+
+def test_build_install_hint_returns_none_for_malicious_version():
+    assert build_install_hint("npm", "lodash", "4.17.19; rm -rf /") is None
+
+
+def test_build_install_hint_returns_none_for_unknown_ecosystem():
+    assert build_install_hint("totally-unknown-ecosystem", "lodash", "1.0.0") is None

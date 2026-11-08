@@ -19,7 +19,19 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app import api, routes_audit, routes_auth, routes_dashboard, routes_findings, routes_repos, routes_secrets, routes_tokens
+from app import (
+    api,
+    routes_actions,
+    routes_audit,
+    routes_auth,
+    routes_coverage,
+    routes_dashboard,
+    routes_findings,
+    routes_repos,
+    routes_secrets,
+    routes_tokens,
+    routes_users,
+)
 from app.security import SecurityHeadersMiddleware
 from core.config import load_settings
 from core.db import init_engine, session_scope
@@ -42,6 +54,9 @@ app.include_router(routes_findings.router)
 app.include_router(routes_secrets.router)
 app.include_router(routes_audit.router)
 app.include_router(routes_tokens.router)
+app.include_router(routes_actions.router)
+app.include_router(routes_coverage.router)
+app.include_router(routes_users.router)
 app.include_router(api.router)
 
 

@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Aksiyon Grupları{% endblock %}
+{% block content %}
+<h2>Aksiyon Grupları</h2>
+<p style="color:#666; font-size:0.85rem;">Bulgular CVE'ye değil AKSİYONA göre gruplanır: "paket X → sürüm Y yükseltmesi N repodaki M bulguyu kapatır". Komut ipucu sadece paket adı/sürüm ekosistem kuralıyla eşleşiyorsa gösterilir (kopyala-yapıştır komut enjeksiyonu riskine karşı) ve ASLA otomatik çalıştırılmaz.</p>
+<table>
+  <thead>
+    <tr><th>Ekosistem</th><th>Paket</th><th>Hedef sürüm</th><th>Repo sayısı</th><th>Bulgu sayısı</th><th>En yüksek CVSS</th><th>KEV</th><th>Komut ipucu</th></tr>
+  </thead>
+  <tbody>
+    {% for g in groups %}
+    <tr>
+      <td>{{ g.ecosystem }}</td>
+      <td><a href="/blast-radius?q={{ g.package_name }}">{{ g.package_name }}</a></td>
+      <td>{{ g.fix_version }}</td>
+      <td>{{ g.repo_count }}</td>
+      <td>{{ g.finding_count }}</td>
+      <td>{{ g.max_cvss if g.max_cvss is not none else "-" }}</td>
+      <td>{% if g.any_kev %}⚠️{% endif %}</td>
+      <td>{% if g.install_hint %}<code class="secret">{{ g.install_hint }}</code>{% else %}<span style="color:#9b1c1c;">paket adı doğrulanamadı, ipucu gösterilmiyor</span>{% endif %}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="8">Şu an yükseltmeyle kapatılabilecek açık bulgu yok.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

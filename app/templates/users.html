@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Kullanıcılar{% endblock %}
+{% block content %}
+<h2>Kullanıcılar</h2>
+{% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
+<p style="color:#666; font-size:0.85rem;">Panelden sadece <strong>viewer</strong> hesabı oluşturulabilir. Yeni bir <strong>admin</strong> hesabı oluşturmak veya TOTP sıfırlamak sunucuda <code>tools/create_admin.py</code> ile yapılır (TOTP kurulumu güvenli bir dışarıdan-kanal gerektirir).</p>
+
+<div class="card">
+  <h3>Yeni viewer oluştur</h3>
+  <form method="post" action="/users">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="username">Kullanıcı adı</label>
+    <input type="text" id="username" name="username" required>
+    <label for="password">Parola (en az 12 karakter, 3 karakter sınıfı)</label>
+    <input type="password" id="password" name="password" required>
+    <p><button class="btn btn-primary" type="submit">Oluştur</button></p>
+  </form>
+</div>
+
+<table>
+  <thead><tr><th>Kullanıcı adı</th><th>Rol</th><th>Durum</th><th>TOTP</th><th>Kilitli mi</th><th></th></tr></thead>
+  <tbody>
+    {% for u in users %}
+    <tr>
+      <td>{{ u.username }}</td>
+      <td>{{ u.role }}</td>
+      <td>{% if u.is_active %}aktif{% else %}<span class="badge badge-ACCEPTED_RISK">devre dışı</span>{% endif %}</td>
+      <td>{% if u.totp_enabled %}açık{% else %}kapalı{% endif %}</td>
+      <td>{% if u.locked_until %}evet ({{ u.locked_until }}){% else %}-{% endif %}</td>
+      <td>
+        {% if u.username != user.username %}
+        <form method="post" action="/users/{{ u.id }}/toggle-active" class="inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn" type="submit">{% if u.is_active %}Devre dışı bırak{% else %}Aktif et{% endif %}</button>
+        </form>
+        {% endif %}
+        <details style="display:inline-block;">
+          <summary class="btn" style="display:inline;">Parola sıfırla</summary>
+          <form method="post" action="/users/{{ u.id }}/reset-password">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="password" name="new_password" placeholder="yeni parola" required>
+            <button class="btn btn-danger" type="submit">Sıfırla</button>
+          </form>
+        </details>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

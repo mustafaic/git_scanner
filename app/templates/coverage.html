@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Coverage{% endblock %}
+{% block content %}
+<h2>Coverage ve Sağlık</h2>
+
+<div class="card">
+  <h3>Hiç taranmamış aktif repolar</h3>
+  <table>
+    <thead><tr><th>Repo</th></tr></thead>
+    <tbody>
+      {% for r in never_scanned %}
+      <tr><td>{{ r.full_name }}</td></tr>
+      {% else %}
+      <tr><td>Yok.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h3>Lockfile'sız (veya bileşensiz) görünen repolar</h3>
+  <p style="color:#666; font-size:0.8rem;">Bilinen sınırlama: bu liste "repo'da lockfile yok" ile "repo'nun bağımlılığı yok" durumlarını ayırt etmez.</p>
+  <table>
+    <thead><tr><th>Repo</th><th>Son extraction</th></tr></thead>
+    <tbody>
+      {% for run in lockfile_less %}
+      <tr><td>{{ repo_names.get(run.repo_id, run.repo_id) }}</td><td>{{ run.finished_at or run.started_at }}</td></tr>
+      {% else %}
+      <tr><td colspan="2">Yok.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h3>PARTIAL / başarısız / review gerektiren son taramalar</h3>
+  <table>
+    <thead><tr><th>Repo</th><th>Durum</th><th>Hata</th><th>Zaman</th></tr></thead>
+    <tbody>
+      {% for run in partial_or_failed %}
+      <tr>
+        <td>{{ repo_names.get(run.repo_id, run.repo_id) }}</td>
+        <td><span class="badge badge-NEEDS_REVIEW">{{ run.status }}</span></td>
+        <td>{{ run.error or "-" }}</td>
+        <td>{{ run.finished_at or run.started_at }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4">Yok.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h3>{{ stale_days_threshold }}+ gündür doğrulanmamış repolar</h3>
+  <table>
+    <thead><tr><th>Repo</th><th>Gün</th><th>Son başarılı/denenen tarama</th></tr></thead>
+    <tbody>
+      {% for run, days in stale %}
+      <tr>
+        <td>{{ repo_names.get(run.repo_id, run.repo_id) }}</td>
+        <td>{{ days }}</td>
+        <td>{{ run.finished_at or run.started_at }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="3">Yok.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h3>{{ stale_trigger_minutes }}+ dakikadır işlenmemiş tetikleyiciler (gecikme/rate-limit belirtisi)</h3>
+  <table>
+    <thead><tr><th>Repo</th><th>Kaynak</th><th>Oluşturuldu</th></tr></thead>
+    <tbody>
+      {% for t in lagging_triggers %}
+      <tr>
+        <td>{{ repo_names.get(t.repo_id, t.repo_id) }}</td>
+        <td>{{ t.source }}</td>
+        <td>{{ t.created_at }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="3">Yok.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h3>Arşiv / fork repolar</h3>
+  <table>
+    <thead><tr><th>Repo</th><th>Arşiv</th><th>Fork</th></tr></thead>
+    <tbody>
+      {% for r in archived_or_fork %}
+      <tr>
+        <td>{{ r.full_name }}</td>
+        <td>{% if r.archived %}Evet{% else %}-{% endif %}</td>
+        <td>{% if r.fork %}Evet{% else %}-{% endif %}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="3">Yok.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h3>Bilinen kör noktalar</h3>
+  <ul style="font-size:0.85rem; color:#444;">
+    <li>Sadece default branch taranır; diğer dallardaki zafiyetler/secret'lar görünmez.</li>
+    <li>"Lockfile'sız" sinyali, bağımlılığı olmayan bir repo ile lockfile'ı eksik bir repoyu ayırt etmez.</li>
+    <li>Repo bazlı tarama dahil/hariç politikası (gerekçeli) henüz panelden yönetilmiyor.</li>
+  </ul>
+</div>
+{% endblock %}

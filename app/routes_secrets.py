@@ -16,21 +16,12 @@ from starlette.requests import Request
 
 from app.auth_service import record_audit
 from app.csrf import require_csrf
-from app.deps import get_db, render_page, require_admin, require_user
-from core.models import Repository, SecretFinding, SecretFindingEvent, User
+from app.deps import get_db, get_repo_names, render_page, require_admin, require_user
+from core.models import SecretFinding, SecretFindingEvent, User
 
 router = APIRouter()
 
 _MANUAL_ALLOWED_STATUSES = {"OPEN", "ROTATED", "FALSE_POSITIVE", "ACCEPTED_RISK"}
-
-
-def _repo_name_map(db: DbSession, repo_ids: list[int]) -> dict[int, str]:
-    if not repo_ids:
-        return {}
-    rows = db.execute(
-        select(Repository.github_repo_id, Repository.full_name).where(Repository.github_repo_id.in_(repo_ids))
-    ).all()
-    return {row[0]: row[1] for row in rows}
 
 
 @router.get("/secrets")
@@ -42,7 +33,7 @@ def list_secrets(request: Request, status: str = "", db: DbSession = Depends(get
         query = query.where(SecretFinding.lifecycle_status == "OPEN")
     query = query.order_by(SecretFinding.present_in_current_code.desc(), SecretFinding.first_seen_at.desc())
     secrets_list = db.execute(query.limit(500)).scalars().all()
-    repo_names = _repo_name_map(db, [s.repo_id for s in secrets_list])
+    repo_names = get_repo_names(db, [s.repo_id for s in secrets_list])
     return render_page(
         request, "secret_findings.html",
         {"secrets": secrets_list, "repo_names": repo_names, "status_filter": status,
@@ -56,7 +47,7 @@ def secret_detail(request: Request, secret_id: int, db: DbSession = Depends(get_
     secret = db.get(SecretFinding, secret_id)
     if secret is None:
         raise HTTPException(status_code=404, detail="secret bulgusu bulunamadi")
-    repo_names = _repo_name_map(db, [secret.repo_id])
+    repo_names = get_repo_names(db, [secret.repo_id])
     events = db.execute(
         select(SecretFindingEvent).where(SecretFindingEvent.secret_finding_id == secret_id)
         .order_by(SecretFindingEvent.created_at.desc())

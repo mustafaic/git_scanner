@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Blast Radius{% endblock %}
+{% block content %}
+<h2>Blast Radius</h2>
+<p style="color:#666; font-size:0.85rem;">Bir CVE/GHSA/OSV kimliği veya paket adı girin -- etkilenen tüm repolar saniyeler içinde listelenir.</p>
+<form method="get" action="/blast-radius" style="margin-bottom:1rem;">
+  <label for="q">CVE / GHSA / OSV ID veya paket adı</label>
+  <input type="text" id="q" name="q" value="{{ q }}" placeholder="örn. lodash veya GHSA-xxxx" style="max-width:320px;">
+  <p><button class="btn btn-primary" type="submit">Ara</button></p>
+</form>
+
+{% if q %}
+<p><strong>{{ affected_repo_count }}</strong> repo etkileniyor, <strong>{{ results | length }}</strong> bulgu eşleşti.</p>
+<table>
+  <thead><tr><th>Repo</th><th>Paket</th><th>Sürüm</th><th>Zafiyet</th><th>Durum</th></tr></thead>
+  <tbody>
+    {% for r in results %}
+    <tr>
+      <td>{{ r.repo_name }}</td>
+      <td><a href="/findings/{{ r.finding.id }}">{{ r.finding.package_name }}</a></td>
+      <td>{{ r.finding.version }}</td>
+      <td>{{ r.finding.canonical_vulnerability_id }}</td>
+      <td><span class="badge badge-{{ r.finding.lifecycle_status }}">{{ r.finding.lifecycle_status }}</span></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5">Eşleşen bulgu yok.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

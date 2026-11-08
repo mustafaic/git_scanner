@@ -31,7 +31,7 @@ if DATABASE_URL:
     from app.csrf import CSRF_COOKIE_NAME
     from app.main import app
     from core import auth
-    from core.models import AuditLog, Finding, Repository, SecretFinding, User
+    from core.models import AuditLog, Finding, Repository, ScanRun, ScanTrigger, SecretFinding, User
 
 
 ADMIN_PASSWORD = "Str0ng!Passw0rd#2026"
@@ -50,7 +50,7 @@ def _clean(engine):
     with engine.begin() as conn:
         for table in (
             "secret_finding_events", "secret_findings", "finding_events", "finding_sources", "findings",
-            "api_tokens", "audit_log", "sessions", "users", "repositories", "scan_triggers",
+            "api_tokens", "audit_log", "sessions", "users", "repositories", "scan_triggers", "scan_runs",
         ):
             conn.execute(text(f"DELETE FROM {table}"))
     yield
@@ -420,6 +420,9 @@ def test_viewer_can_only_reach_own_token_write_endpoints_all_other_writes_blocke
         ("post", f"/findings/{finding_id}/status", {"new_status": "FALSE_POSITIVE", "reason": "x", "csrf_token": csrf}),
         ("post", f"/secrets/{secret_id}/status", {"new_status": "ROTATED", "note": "x", "csrf_token": csrf}),
         ("post", "/repositories/4/trigger", {"csrf_token": csrf}),
+        ("post", "/users", {"username": "sneaky", "password": "DoesntMatter!123", "csrf_token": csrf}),
+        ("post", "/users/1/toggle-active", {"csrf_token": csrf}),
+        ("post", "/users/1/reset-password", {"new_password": "DoesntMatter!123", "csrf_token": csrf}),
     ]
     for method, path, data in write_requests:
         resp = getattr(client, method)(path, data=data, follow_redirects=False)
@@ -427,6 +430,8 @@ def test_viewer_can_only_reach_own_token_write_endpoints_all_other_writes_blocke
 
     audit_resp = client.get("/audit-log")
     assert audit_resp.status_code == 403
+    users_resp = client.get("/users")
+    assert users_resp.status_code == 403
 
     # TEK istisna (kullanici karari): kendi read-only API token'ini yonetmek.
     token_resp = client.post("/tokens", data={"name": "viewer-own-token", "expires_in_days": "", "csrf_token": csrf})
@@ -440,3 +445,192 @@ def test_viewer_can_only_reach_own_token_write_endpoints_all_other_writes_blocke
         secret_status_after = conn.execute(text("SELECT lifecycle_status FROM secret_findings WHERE id=:i"), {"i": secret_id}).scalar_one()
     assert status_after == "OPEN"
     assert secret_status_after == "OPEN"
+
+
+# --- Stage 4 part 1: A10 kullanici yonetimi (admin-only, viewer-only olusturma) ---
+
+def test_admin_creates_viewer_toggles_active_and_resets_password(client, engine):
+    admin_id, secret = _make_admin(engine)
+    code = pyotp.TOTP(secret).now()
+    _login(client, "admin", ADMIN_PASSWORD, code)
+    csrf = _csrf_token(client)
+
+    resp = client.post("/users", data={"username": "newviewer", "password": VIEWER_PASSWORD, "csrf_token": csrf}, follow_redirects=False)
+    assert resp.status_code == 303
+
+    with engine.begin() as conn:
+        row = conn.execute(text("SELECT id, role, is_active FROM users WHERE username='newviewer'")).one()
+    assert row[1] == "viewer"
+    assert row[2] is True
+    new_user_id = row[0]
+
+    toggle_resp = client.post(f"/users/{new_user_id}/toggle-active", data={"csrf_token": csrf}, follow_redirects=False)
+    assert toggle_resp.status_code == 303
+    with engine.begin() as conn:
+        is_active = conn.execute(text("SELECT is_active FROM users WHERE id=:i"), {"i": new_user_id}).scalar_one()
+    assert is_active is False
+
+    # Login testine devam etmeden ONCE tekrar aktif et (disable/enable
+    # ayri bir endpoint degil, aynı toggle -- bu testte her ikisini de
+    # kapsiyoruz).
+    client.post(f"/users/{new_user_id}/toggle-active", data={"csrf_token": csrf}, follow_redirects=False)
+    with engine.begin() as conn:
+        is_active_again = conn.execute(text("SELECT is_active FROM users WHERE id=:i"), {"i": new_user_id}).scalar_one()
+    assert is_active_again is True
+
+    reset_resp = client.post(
+        f"/users/{new_user_id}/reset-password", data={"new_password": "AnotherStr0ng!Pw#9", "csrf_token": csrf},
+        follow_redirects=False,
+    )
+    assert reset_resp.status_code == 303
+
+    with engine.begin() as conn:
+        actions = [r[0] for r in conn.execute(text("SELECT action FROM audit_log ORDER BY id")).fetchall()]
+    assert "user_created" in actions
+    assert "user_active_toggled" in actions
+    assert "user_password_reset" in actions
+
+    new_client = TestClient(app)
+    login_resp = _login(new_client, "newviewer", "AnotherStr0ng!Pw#9")
+    assert login_resp.status_code == 303
+
+
+def test_admin_cannot_disable_own_account(client, engine):
+    admin_id, secret = _make_admin(engine)
+    code = pyotp.TOTP(secret).now()
+    _login(client, "admin", ADMIN_PASSWORD, code)
+    csrf = _csrf_token(client)
+    resp = client.post(f"/users/{admin_id}/toggle-active", data={"csrf_token": csrf}, follow_redirects=False)
+    assert resp.status_code == 400
+
+
+def test_create_user_rejects_duplicate_username_and_weak_password(client, engine):
+    admin_id, secret = _make_admin(engine)
+    _make_viewer(engine, username="existing")
+    code = pyotp.TOTP(secret).now()
+    _login(client, "admin", ADMIN_PASSWORD, code)
+    csrf = _csrf_token(client)
+
+    dup_resp = client.post("/users", data={"username": "existing", "password": VIEWER_PASSWORD, "csrf_token": csrf})
+    assert dup_resp.status_code == 400
+
+    weak_resp = client.post("/users", data={"username": "newperson", "password": "short", "csrf_token": csrf})
+    assert weak_resp.status_code == 400
+
+
+# --- Stage 4 part 1: A1 aksiyon gruplari + A2 blast radius -----------------
+
+def test_action_groups_group_findings_by_package_and_fix_version(client, engine):
+    admin_id, secret = _make_admin(engine)
+    from sqlalchemy.orm import sessionmaker
+
+    Session = sessionmaker(bind=engine, future=True)
+    with Session() as session:
+        session.add_all([
+            Repository(github_repo_id=10, full_name="acme/a", owner="acme", name="a", default_branch="main", visibility="private"),
+            Repository(github_repo_id=11, full_name="acme/b", owner="acme", name="b", default_branch="main", visibility="private"),
+        ])
+        session.add_all([
+            Finding(
+                repo_id=10, lockfile_path="package-lock.json", ecosystem="npm", package_name="lodash",
+                version="4.17.15", canonical_vulnerability_id="GHSA-aaa", verification_status="VERIFIED",
+                lifecycle_status="OPEN", fix_status="PATCH_AVAILABLE", fix_version="4.17.19",
+            ),
+            Finding(
+                repo_id=11, lockfile_path="package-lock.json", ecosystem="npm", package_name="lodash",
+                version="4.17.10", canonical_vulnerability_id="GHSA-bbb", verification_status="VERIFIED",
+                lifecycle_status="OPEN", fix_status="PATCH_AVAILABLE", fix_version="4.17.19",
+            ),
+        ])
+        session.commit()
+
+    code = pyotp.TOTP(secret).now()
+    _login(client, "admin", ADMIN_PASSWORD, code)
+    resp = client.get("/action-groups")
+    assert resp.status_code == 200
+    assert "lodash" in resp.text
+    assert "npm install lodash@4.17.19" in resp.text
+    assert "2" in resp.text  # repo_count/finding_count
+
+
+def test_action_groups_shows_warning_instead_of_hint_for_unsafe_package_name(client, engine):
+    admin_id, secret = _make_admin(engine)
+    from sqlalchemy.orm import sessionmaker
+
+    Session = sessionmaker(bind=engine, future=True)
+    with Session() as session:
+        session.add(Repository(github_repo_id=12, full_name="acme/c", owner="acme", name="c", default_branch="main", visibility="private"))
+        session.add(Finding(
+            repo_id=12, lockfile_path="package-lock.json", ecosystem="npm", package_name="lodash; rm -rf /",
+            version="4.17.15", canonical_vulnerability_id="GHSA-ccc", verification_status="VERIFIED",
+            lifecycle_status="OPEN", fix_status="PATCH_AVAILABLE", fix_version="4.17.19",
+        ))
+        session.commit()
+
+    code = pyotp.TOTP(secret).now()
+    _login(client, "admin", ADMIN_PASSWORD, code)
+    resp = client.get("/action-groups")
+    assert resp.status_code == 200
+    assert "rm -rf" not in resp.text or "doğrulanamadı" in resp.text
+    assert "doğrulanamadı" in resp.text
+
+
+def test_blast_radius_search_finds_affected_repos(client, engine):
+    admin_id, secret = _make_admin(engine)
+    from sqlalchemy.orm import sessionmaker
+
+    Session = sessionmaker(bind=engine, future=True)
+    with Session() as session:
+        session.add(Repository(github_repo_id=13, full_name="acme/blast", owner="acme", name="blast", default_branch="main", visibility="private"))
+        session.add(Finding(
+            repo_id=13, lockfile_path="package-lock.json", ecosystem="npm", package_name="left-pad",
+            version="1.0.0", canonical_vulnerability_id="GHSA-blast-1", verification_status="VERIFIED",
+            lifecycle_status="OPEN",
+        ))
+        session.commit()
+
+    code = pyotp.TOTP(secret).now()
+    _login(client, "admin", ADMIN_PASSWORD, code)
+    resp = client.get("/blast-radius", params={"q": "left-pad"})
+    assert resp.status_code == 200
+    assert "acme/blast" in resp.text
+
+    empty_resp = client.get("/blast-radius", params={"q": "no-such-package-xyz"})
+    assert "Eşleşen bulgu yok" in empty_resp.text
+
+
+# --- Stage 4 part 1: A3 coverage ------------------------------------------
+
+def test_coverage_page_surfaces_lockfile_less_partial_and_lagging_signals(client, engine):
+    admin_id, secret = _make_admin(engine)
+    from sqlalchemy.orm import sessionmaker
+
+    Session = sessionmaker(bind=engine, future=True)
+    with Session() as session:
+        session.add_all([
+            Repository(github_repo_id=20, full_name="acme/no-lockfile", owner="acme", name="no-lockfile", default_branch="main", visibility="private"),
+            Repository(github_repo_id=21, full_name="acme/partial-scan", owner="acme", name="partial-scan", default_branch="main", visibility="private"),
+            Repository(github_repo_id=22, full_name="acme/never-scanned", owner="acme", name="never-scanned", default_branch="main", visibility="private"),
+        ])
+        session.add_all([
+            ScanRun(run_type="extraction", repo_id=20, status="success", details={"files": []}),
+            ScanRun(run_type="extraction", repo_id=21, status="partial", error="blob_fetch_failed", details={"files": [{"path": "x", "status": "blob_fetch_failed"}]}),
+            ScanTrigger(repo_id=20, source="manual"),
+        ])
+        session.commit()
+
+    import datetime as dt
+
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE scan_triggers SET created_at = :t WHERE repo_id = 20"),
+            {"t": dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=2)},
+        )
+
+    code = pyotp.TOTP(secret).now()
+    _login(client, "admin", ADMIN_PASSWORD, code)
+    resp = client.get("/coverage")
+    assert resp.status_code == 200
+    assert "acme/no-lockfile" in resp.text
+    assert "acme/partial-scan" in resp.text
+    assert "acme/never-scanned" in resp.text

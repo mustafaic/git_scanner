@@ -19,6 +19,7 @@ yapisal/tam versiyonudur -- ayni ayristirma mantigi, ama sayim yerine
 from __future__ import annotations
 
 import json
+import re
 import urllib.parse
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
@@ -352,3 +353,69 @@ PARSERS: Dict[str, Callable[[bytes], List[ParsedComponent]]] = {
     "nuget": parse_packages_lock_json,
     "gradle": parse_gradle_lockfile,
 }
+
+
+# --- Guvenli komut ipucu (master_prompt.md 6 A1, 5 "Uygulama guvenligi") ---
+#
+# "Komut ipucunde paket adi/surum ekosistem kuralina gore DOGRULANMADAN
+# gosterilmez; yalnizca metin olarak gosterilir, otomatik calistirilmaz."
+# Scanner ciktisi (paket adi) GUVENILMEYEN girdidir -- `lodash; rm -rf /`
+# gibi bir ad, kopyala-yapistir saldirisina donusebilir. HTML escape
+# YETERLI DEGIL (saldiri hedefi tarayici degil, kullanicinin terminali);
+# ekosistemin GERCEK ad/surum grameri ile eslesmiyorsa ipucu HIC URETILMEZ.
+#
+# BILEREK burada (adapters/osv_scanner'a bagimli olmayan core/finding_model.py
+# DEGIL): app servisi orchestrator/worker modullerini import etmez (bkz.
+# deploy/Dockerfile.app), bu modul zaten core/finding_model.py'nin ECOSYSTEM_*
+# sabitlerinin kaynagi ve adapters'a hic bagli degil -- A1 aksiyon gruplari
+# (app/routes_actions.py) sadece bunu kullanir.
+
+_PACKAGE_NAME_PATTERNS: Dict[str, re.Pattern] = {
+    ECOSYSTEM_NPM: re.compile(r"^(@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*$"),
+    ECOSYSTEM_PYPI: re.compile(r"^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$"),
+    ECOSYSTEM_GO: re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9._/-]*[A-Za-z0-9])?$"),
+    ECOSYSTEM_CARGO: re.compile(r"^[A-Za-z0-9_-]+$"),
+    ECOSYSTEM_PACKAGIST: re.compile(r"^[A-Za-z0-9]([A-Za-z0-9._-]*)?/[A-Za-z0-9]([A-Za-z0-9._-]*)?$"),
+    ECOSYSTEM_MAVEN: re.compile(r"^[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+$"),
+    ECOSYSTEM_NUGET: re.compile(r"^[A-Za-z0-9_.-]+$"),
+    ECOSYSTEM_RUBYGEMS: re.compile(r"^[A-Za-z0-9_.-]+$"),
+}
+
+# Surum string'i ekosistemden bagimsiz GUVENLI karakter kumesiyle sinirlanir
+# (boşluk/`;`/`|`/backtick/`$`/`&` gibi shell meta-karakterleri HICBIR
+# ekosistemde gecerli bir surum parcasi degildir).
+_SAFE_VERSION_PATTERN = re.compile(r"^[A-Za-z0-9.+_-]+$")
+
+_INSTALL_HINT_TEMPLATES: Dict[str, str] = {
+    ECOSYSTEM_NPM: "npm install {name}@{version}",
+    ECOSYSTEM_PYPI: "pip install {name}=={version}",
+    ECOSYSTEM_GO: "go get {name}@v{version}",
+    ECOSYSTEM_CARGO: "cargo update -p {name} --precise {version}",
+    ECOSYSTEM_PACKAGIST: "composer require {name}:{version}",
+    ECOSYSTEM_MAVEN: "{name} icin pom.xml/build.gradle'da surumu {version} yapin",
+    ECOSYSTEM_NUGET: "dotnet add package {name} --version {version}",
+    ECOSYSTEM_RUBYGEMS: "gem update {name} --version {version}",
+}
+
+
+def is_safe_package_name(ecosystem: str, name: str) -> bool:
+    pattern = _PACKAGE_NAME_PATTERNS.get(ecosystem)
+    if pattern is None or not name:
+        return False
+    return bool(pattern.match(name))
+
+
+def is_safe_version_string(version: str) -> bool:
+    return bool(version) and bool(_SAFE_VERSION_PATTERN.match(version))
+
+
+def build_install_hint(ecosystem: str, name: str, version: str) -> Optional[str]:
+    """Ad/surum ekosistem grameriyle eslesmiyorsa None doner (ipucu
+    gosterilmez) -- cagiran taraf bunu asla otomatik calistirmaz, SADECE
+    salt metin olarak gosterir (master_prompt.md 5)."""
+    if not is_safe_package_name(ecosystem, name) or not is_safe_version_string(version):
+        return None
+    template = _INSTALL_HINT_TEMPLATES.get(ecosystem)
+    if template is None:
+        return None
+    return template.format(name=name, version=version)
