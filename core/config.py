@@ -32,6 +32,14 @@ class Settings(BaseSettings):
     claim_loop_interval_seconds: float = 2.0
     job_lock_duration_seconds: int = 120
     job_max_attempts: int = 5
+    debounce_window_seconds: int = 20
+
+    # Asama 2: Hat A/B + worker staging (master_prompt.md 3.2, 3.3).
+    staging_dir: str = "/staging"
+    db_cache_dir: str = "/dbs"
+    daily_jobs_interval_hours: int = 24
+    # master_prompt.md 3.3/4.6: taze olmayan DB hicbir bulguyu kapatamaz.
+    advisory_max_age_seconds: int = 48 * 3600
 
     log_level: str = "INFO"
 

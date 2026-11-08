@@ -18,6 +18,7 @@ Dosya duzeni:
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -79,9 +80,22 @@ def is_result_ready(staging_dir: Path) -> bool:
     return (staging_dir / DONE_FILENAME).exists()
 
 
+def _mkdir_shared(path: Path) -> None:
+    """orchestrator (root) ve worker (non-root UID) AYNI paylasilan Docker
+    volume'una yazar; hangisi dizini once olusturursa, digeri de yazabilsin
+    diye 0o777 verilir (tek makine icinde paylasilan staging volume'u,
+    gercek bir guvenlik siniri degil -- asil izolasyon network_mode:none +
+    cap_drop + read_only rootfs'tir, bkz. master_prompt.md 5)."""
+    path.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(path, 0o777)
+    except OSError:
+        pass  # bazi platformlarda (ör. Windows bind mount) chmod no-op olabilir
+
+
 def write_result(staging_dir: Path, exit_code: int, stdout: bytes, stderr: bytes) -> None:
     output_dir = staging_dir / OUTPUT_DIRNAME
-    output_dir.mkdir(parents=True, exist_ok=True)
+    _mkdir_shared(output_dir)
     (output_dir / STDOUT_FILENAME).write_bytes(stdout)
     stderr_tail = stderr[-STDERR_TAIL_MAX_BYTES:].decode("utf-8", errors="replace")
     (output_dir / META_FILENAME).write_text(json.dumps({"exit_code": exit_code, "stderr_tail": stderr_tail}), encoding="utf-8")
@@ -112,11 +126,11 @@ def clear_staging(staging_dir: Path) -> None:
         dir_path = staging_dir / dirname
         if dir_path.exists():
             shutil.rmtree(dir_path)
-    (staging_dir / INPUT_DIRNAME).mkdir(parents=True, exist_ok=True)
-    (staging_dir / OUTPUT_DIRNAME).mkdir(parents=True, exist_ok=True)
+    _mkdir_shared(staging_dir / INPUT_DIRNAME)
+    _mkdir_shared(staging_dir / OUTPUT_DIRNAME)
 
 
 def stage_input_file(staging_dir: Path, filename: str, content: bytes) -> None:
     input_dir = staging_dir / INPUT_DIRNAME
-    input_dir.mkdir(parents=True, exist_ok=True)
+    _mkdir_shared(input_dir)
     (input_dir / filename).write_bytes(content)

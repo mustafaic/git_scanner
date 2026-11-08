@@ -173,9 +173,13 @@ def extract_repository(
     staging_dir: Path,
     repo: Repository,
     http_client: Optional[httpx.Client] = None,
-) -> ScanRun:
+) -> Tuple[ScanRun, Dict[str, Tuple[str, bytes]]]:
     """Bir repo icin Hat A'yi calistirir. Donen ScanRun zaten session'a
-    eklenmis ve flush edilmistir (id okunabilir); commit cagiran tarafta."""
+    eklenmis ve flush edilmistir (id okunabilir); commit cagiran tarafta.
+
+    Donen ikinci deger (`changed_contents`): bu calistirmada DEGISEN
+    lockfile'larin HAM icerigi (path -> bytes) -- cagiran taraf (main.py)
+    bunu Hat B anlik eslestirmeye (S2) dogrudan besler, tekrar indirmez."""
     scan_run = ScanRun(
         run_type="extraction", repo_id=repo.github_repo_id, commit_sha=repo.last_seen_sha,
         status="success", details={},
@@ -189,12 +193,13 @@ def extract_repository(
         scan_run.status = "failed"
         scan_run.error = str(exc)
         scan_run.finished_at = dt.datetime.now(dt.timezone.utc)
-        return scan_run
+        return scan_run, {}
 
     lockfiles = find_lockfiles(tree_entries)
     file_statuses: List[Dict[str, Any]] = []
     # Pass 1: her lockfile icin YENI bilesen listesini (DB'ye DOKUNMADAN) topla.
     pending_writes: List[Tuple[str, str, List[Dict[str, Any]]]] = []  # (path, blob_sha, components)
+    changed_contents: Dict[str, Tuple[str, bytes]] = {}  # path -> (blob_sha, ham icerik)
     unchanged_paths: List[str] = []
     any_failure = False
 
@@ -212,6 +217,15 @@ def extract_repository(
             unchanged_paths.append(path)
             continue
 
+        # Icerik her zaman indirilir (Hat B anlik eslestirme bunu kullanir);
+        # icerik-adresli onbellek sadece PARSE adimini (worker cagrisini) atlar.
+        content = get_blob_content(api_base_url, auth, repo.owner, repo.name, blob_sha, http_client)
+        if content is None or len(content) > MAX_LOCKFILE_BLOB_BYTES:
+            file_statuses.append({"path": path, "blob_sha": blob_sha, "status": "blob_fetch_failed"})
+            any_failure = True
+            continue
+        changed_contents[path] = (blob_sha, content)
+
         cached = _latest_cached_components(session, blob_sha)
         if cached is not None:
             components = [
@@ -223,11 +237,6 @@ def extract_repository(
             continue
 
         try:
-            content = get_blob_content(api_base_url, auth, repo.owner, repo.name, blob_sha, http_client)
-            if content is None or len(content) > MAX_LOCKFILE_BLOB_BYTES:
-                file_statuses.append({"path": path, "blob_sha": blob_sha, "status": "blob_fetch_failed"})
-                any_failure = True
-                continue
             exit_code, components = run_lockfile_parse_job(staging_dir, path.rsplit("/", 1)[-1], parser_key, content)
             if exit_code != 0:
                 file_statuses.append({"path": path, "blob_sha": blob_sha, "status": "parse_failed", "exit_code": exit_code})
@@ -257,7 +266,7 @@ def extract_repository(
         scan_run.status = "needs_review"
         scan_run.error = "component_count_collapsed"
         scan_run.finished_at = dt.datetime.now(dt.timezone.utc)
-        return scan_run  # pending_writes UYGULANMAZ: eski envanter korunur
+        return scan_run, {}  # pending_writes UYGULANMAZ: eski envanter korunur
 
     # Pass 2: guvenliyse yaz.
     for path, blob_sha, components in pending_writes:
@@ -282,7 +291,7 @@ def extract_repository(
 
     scan_run.status = "partial" if any_failure else "success"
     scan_run.finished_at = dt.datetime.now(dt.timezone.utc)
-    return scan_run
+    return scan_run, changed_contents
 
 
 def _sum_unchanged_components(session: Session, repo_id: int, unchanged_paths: List[str]) -> int:

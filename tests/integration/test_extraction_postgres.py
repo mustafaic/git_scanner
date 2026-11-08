@@ -116,10 +116,11 @@ def test_extract_repository_parses_real_npm_lockfile_via_worker_protocol(engine,
 
     with session_factory() as session:
         repo = session.get(Repository, repo_id)
-        scan_run = extract_repository(session, "https://api.github.com", _FakeAuth(), worker_thread, repo, http_client=client)
+        scan_run, changed_contents = extract_repository(session, "https://api.github.com", _FakeAuth(), worker_thread, repo, http_client=client)
         session.commit()
 
     assert scan_run.status == "success"
+    assert changed_contents == {"package-lock.json": ("blobsha1", NPM_LOCK_CONTENT)}
     with session_factory() as session:
         snapshots = session.query(ComponentSnapshot).filter_by(repo_id=repo_id, is_current=True).all()
     assert len(snapshots) == 1
@@ -144,7 +145,7 @@ def test_extract_repository_skips_unchanged_blob(engine, worker_thread):
 
     with session_factory() as session:
         repo = session.get(Repository, repo_id)
-        scan_run2 = extract_repository(session, "https://api.github.com", _FakeAuth(), worker_thread, repo, http_client=client)
+        scan_run2, _ = extract_repository(session, "https://api.github.com", _FakeAuth(), worker_thread, repo, http_client=client)
         session.commit()
 
     assert scan_run2.details["files"][0]["status"] == "unchanged"
@@ -170,10 +171,12 @@ def test_extract_repository_content_addressed_cache_cross_repo(engine, worker_th
 
     with session_factory() as session:
         repo2 = session.get(Repository, 2)
-        scan_run2 = extract_repository(session, "https://api.github.com", _FakeAuth(), worker_thread, repo2, http_client=client)
+        scan_run2, changed_contents2 = extract_repository(session, "https://api.github.com", _FakeAuth(), worker_thread, repo2, http_client=client)
         session.commit()
 
     assert scan_run2.details["files"][0]["status"] == "cache_hit"
+    # cache_hit SADECE parse adimini atlar; icerik Hat B icin hala donulur.
+    assert changed_contents2 == {"package-lock.json": ("shared-blob-sha", NPM_LOCK_CONTENT)}
     with session_factory() as session:
         snap = session.query(ComponentSnapshot).filter_by(repo_id=2, is_current=True).one()
     assert snap.name == "lodash"
@@ -203,7 +206,7 @@ def test_extract_repository_component_collapse_triggers_needs_review(engine, wor
 
     with session_factory() as session:
         repo = session.get(Repository, repo_id)
-        scan_run = extract_repository(session, "https://api.github.com", _FakeAuth(), worker_thread, repo, http_client=client)
+        scan_run, _ = extract_repository(session, "https://api.github.com", _FakeAuth(), worker_thread, repo, http_client=client)
         session.commit()
 
     assert scan_run.status == "needs_review"
@@ -230,7 +233,7 @@ def test_extract_repository_monorepo_isolation_one_lockfile_failure(engine, work
 
     with session_factory() as session:
         repo = session.get(Repository, repo_id)
-        scan_run = extract_repository(session, "https://api.github.com", _FakeAuth(), worker_thread, repo, http_client=client)
+        scan_run, _ = extract_repository(session, "https://api.github.com", _FakeAuth(), worker_thread, repo, http_client=client)
         session.commit()
 
     assert scan_run.status == "partial"

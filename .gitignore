@@ -26,3 +26,6 @@ inventory_summary.json
 Thumbs.db
 .vscode/
 .idea/
+
+# Claude Code local tool state (not project content)
+.claude/

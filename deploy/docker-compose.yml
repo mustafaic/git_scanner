@@ -1,9 +1,15 @@
-# Asama 1 iskeleti. Tam mimari (proxy, worker, egress-proxy, backup,
-# webhook-receiver) Asama 2/3/5'te eklenecek (master_prompt.md 3.4, 7).
-# Bilinen, belgelenmis Asama 1 sinirlamasi: orchestrator burada DOGRUDAN
-# internete cikar (egress-proxy henuz yok, bu Asama 2 kapsami); GitHub App
-# kimligi konfigure edilmezse discovery/sync devre disi kalir ve servis
-# sadece iskelet/healthcheck modunda calisir.
+# Asama 2 iskeleti (+ Asama 1 servisleri). Tam mimari (proxy, egress-proxy,
+# backup, webhook-receiver) Asama 3/5'te eklenecek (master_prompt.md 3.4, 7).
+# Bilinen, belgelenmis sinirlama: orchestrator burada DOGRUDAN internete
+# cikar (egress-proxy henuz yok, bu Asama 3+ kapsami); GitHub App kimligi
+# konfigure edilmezse discovery/sync devre disi kalir ve servis sadece
+# iskelet/healthcheck modunda calisir.
+#
+# worker <-> orchestrator ILETISIMI DOSYA TABANLI (paylasilan `staging`
+# volume'u uzerinden, master_prompt.md 3.4) -- aralarinda hicbir ag baglantisi
+# YOKTUR (worker network_mode:none). `osv_db_cache` ise orchestrator'in
+# (ag erisimi olan) indirdigi offline advisory DB'nin worker'a READ-ONLY
+# sunuldugu volume'dur (master_prompt.md 5 "Worker izolasyonu").
 
 services:
   postgres:
@@ -46,8 +52,15 @@ services:
       GITHUB_APP_PRIVATE_KEY_PATH: ${GITHUB_APP_PRIVATE_KEY_PATH:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       POLL_INTERVAL_SECONDS: ${POLL_INTERVAL_SECONDS:-60}
+      DEBOUNCE_WINDOW_SECONDS: ${DEBOUNCE_WINDOW_SECONDS:-20}
+      STAGING_DIR: /staging
+      DB_CACHE_DIR: /dbs
+      DAILY_JOBS_INTERVAL_HOURS: ${DAILY_JOBS_INTERVAL_HOURS:-24}
+      ADVISORY_MAX_AGE_SECONDS: ${ADVISORY_MAX_AGE_SECONDS:-172800}
     volumes:
       - ./secrets:/run/secrets:ro
+      - staging:/staging
+      - osv_db_cache:/dbs
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -59,6 +72,23 @@ services:
       timeout: 5s
       retries: 5
     networks: [backend]
+
+  worker:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.worker
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs:
+      - /tmp
+    volumes:
+      - staging:/staging
+      - osv_db_cache:/dbs:ro
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    restart: unless-stopped
 
   app:
     build:
@@ -99,6 +129,8 @@ services:
 
 volumes:
   postgres_data:
+  staging:
+  osv_db_cache:
 
 networks:
   backend:
