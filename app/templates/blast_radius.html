@@ -20,7 +20,7 @@
       <td>{{ r.owners | join(", ") if r.owners else "-" }}</td>
       <td><a href="/findings/{{ r.finding.id }}">{{ r.finding.package_name }}</a></td>
       <td>{{ r.finding.version }}</td>
-      <td>{{ r.finding.canonical_vulnerability_id }}</td>
+      <td>{{ r.finding.canonical_vulnerability_id | cve_id(r.finding.aliases) }}</td>
       <td><span class="badge badge-{{ r.finding.lifecycle_status }}">{{ r.finding.lifecycle_status }}</span></td>
     </tr>
     {% else %}

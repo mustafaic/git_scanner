@@ -3,7 +3,7 @@
 {% block content %}
 <p><a href="/findings">&larr; Bulgu listesi</a></p>
 <div class="card">
-  <h2>{{ finding.package_name }} {{ finding.version }} &mdash; {{ finding.canonical_vulnerability_id }}</h2>
+  <h2>{{ finding.package_name }} {{ finding.version }} &mdash; {{ finding.canonical_vulnerability_id | cve_id(finding.aliases) }}</h2>
   <p><span class="badge badge-{{ finding.lifecycle_status }}">{{ finding.lifecycle_status }}</span>
      {% if finding.kev %}<span class="badge badge-OPEN">KEV</span>{% endif %}
      {% if finding.verification_status == "NEEDS_REVIEW" %}<span class="badge badge-NEEDS_REVIEW">NEEDS_REVIEW</span>{% endif %}</p>
@@ -22,7 +22,7 @@
       {% else %}{{ sla.days_remaining }} gün kaldı (hedef: {{ sla.due_date }}){% endif %}
     </td></tr>
     {% endif %}
-    <tr><th>Aliases</th><td>{{ finding.aliases | join(", ") }}</td></tr>
+    <tr><th>Tüm kimlikler</th><td>{{ ([finding.canonical_vulnerability_id] + finding.aliases) | join(", ") }}</td></tr>
     <tr><th>İlk görülme</th><td>{{ finding.first_seen_at }}</td></tr>
     <tr><th>Son görülme</th><td>{{ finding.last_seen_at }}</td></tr>
     <tr><th>Çözülme</th><td>{{ finding.resolved_at or "-" }}</td></tr>

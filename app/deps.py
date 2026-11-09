@@ -17,12 +17,14 @@ from app.auth_service import get_session_user
 from app.csrf import ensure_csrf_token, set_csrf_cookie
 from core.config import load_settings
 from core.db import session_scope
+from core.lockfile_parser import display_vulnerability_id
 from core.models import Repository, User
 
 SESSION_COOKIE_NAME = "session_id"
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+templates.env.filters["cve_id"] = display_vulnerability_id
 
 _settings = load_settings()
 

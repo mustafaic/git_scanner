@@ -31,7 +31,7 @@
         <td>{% if f.id in new_ids %}<span class="badge badge-OPEN">YENİ</span>{% endif %}</td>
         <td>{{ action_repo_names.get(f.repo_id, f.repo_id) }}</td>
         <td><a href="/findings/{{ f.id }}">{{ f.package_name }} {{ f.version }}</a></td>
-        <td>{{ f.canonical_vulnerability_id }}</td>
+        <td>{{ f.canonical_vulnerability_id | cve_id(f.aliases) }}</td>
         <td>{{ f.severity_cvss_score if f.severity_cvss_score is not none else "-" }}</td>
         <td>{% if f.kev %}⚠️{% endif %}</td>
         <td><span class="badge badge-{{ f.lifecycle_status }}">{{ f.lifecycle_status }}</span></td>

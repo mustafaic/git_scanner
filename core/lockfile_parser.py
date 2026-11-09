@@ -419,3 +419,21 @@ def build_install_hint(ecosystem: str, name: str, version: str) -> Optional[str]
     if template is None:
         return None
     return template.format(name=name, version=version)
+
+
+_CVE_PATTERN = re.compile(r"^CVE-\d{4}-\d+$")
+
+
+def display_vulnerability_id(canonical_id: str, aliases: Optional[List[str]]) -> str:
+    """Panelde gosterilecek birincil kimlik: kullanicilar GHSA-xxxx/OSV
+    yerine CVE-xxxx'e daha alisik, bu yuzden aliases icinde bir CVE varsa
+    ONU gosteririz. Eslestirme/dedup icin HALA canonical_vulnerability_id
+    kullanilir (core/finding_model.py) -- bu SADECE goruntuleme katmani,
+    depolanan veriyi degistirmez. CVE alias'i yoksa (ör. sadece OSV'de
+    bilinen bir GHSA) canonical_id'ye geri doner."""
+    if _CVE_PATTERN.match(canonical_id):
+        return canonical_id
+    for alias in aliases or []:
+        if _CVE_PATTERN.match(alias):
+            return alias
+    return canonical_id

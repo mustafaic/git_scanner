@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from core.lockfile_parser import (  # noqa: E402
     build_install_hint,
+    display_vulnerability_id,
     is_safe_package_name,
     is_safe_version_string,
     parse_cargo_lock,
@@ -216,3 +217,22 @@ def test_build_install_hint_returns_none_for_malicious_version():
 
 def test_build_install_hint_returns_none_for_unknown_ecosystem():
     assert build_install_hint("totally-unknown-ecosystem", "lodash", "1.0.0") is None
+
+
+def test_display_vulnerability_id_prefers_cve_alias_over_ghsa_canonical():
+    """Kullanicilar CVE-xxxx formatina GHSA-xxxx'ten daha alisik -- aliases
+    icinde bir CVE varsa panelde ONU gosteririz."""
+    assert display_vulnerability_id("GHSA-f82v-jwr5-mffw", ["CVE-2023-26159"]) == "CVE-2023-26159"
+
+
+def test_display_vulnerability_id_canonical_already_cve_is_unchanged():
+    assert display_vulnerability_id("CVE-2023-26159", ["GHSA-f82v-jwr5-mffw"]) == "CVE-2023-26159"
+
+
+def test_display_vulnerability_id_falls_back_to_canonical_without_cve_alias():
+    assert display_vulnerability_id("GHSA-only-known", ["OSV-2023-999"]) == "GHSA-only-known"
+
+
+def test_display_vulnerability_id_handles_no_aliases():
+    assert display_vulnerability_id("GHSA-only-known", []) == "GHSA-only-known"
+    assert display_vulnerability_id("GHSA-only-known", None) == "GHSA-only-known"

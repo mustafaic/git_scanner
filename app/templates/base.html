@@ -7,14 +7,20 @@
   <script src="/static/vendor/htmx.min.js"></script>
   <style>
     :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
     body { font-family: system-ui, sans-serif; margin: 0; background: #f6f7f9; color: #1a1a1a; }
-    header { background: #1f2a3a; color: #fff; padding: 0.75rem 1.25rem; display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap; }
-    header a { color: #d7e3f5; text-decoration: none; font-size: 0.95rem; }
-    header a:hover { color: #fff; text-decoration: underline; }
-    header .brand { font-weight: 700; color: #fff; margin-right: 0.5rem; }
-    header .spacer { flex: 1; }
-    header .who { color: #9fb3cc; font-size: 0.85rem; }
-    main { padding: 1.5rem; max-width: 1200px; margin: 0 auto; }
+    body.with-sidebar { display: flex; min-height: 100vh; }
+    .sidebar { background: #1f2a3a; color: #fff; width: 220px; flex: 0 0 220px; min-height: 100vh; padding: 1rem 0; display: flex; flex-direction: column; position: sticky; top: 0; align-self: flex-start; }
+    .sidebar .brand { font-weight: 700; color: #fff; font-size: 1.05rem; padding: 0 1.25rem 1rem; border-bottom: 1px solid #334158; margin-bottom: 0.5rem; }
+    .sidebar nav { display: flex; flex-direction: column; flex: 1; }
+    .sidebar nav a { color: #d7e3f5; text-decoration: none; font-size: 0.9rem; padding: 0.55rem 1.25rem; }
+    .sidebar nav a:hover { color: #fff; background: #2a3750; }
+    .sidebar nav a.active { color: #fff; background: #2a3750; font-weight: 600; border-left: 3px solid #4d8fd6; }
+    .sidebar .nav-section-label { color: #7f93b0; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.9rem 1.25rem 0.3rem; }
+    .sidebar .who-block { border-top: 1px solid #334158; padding: 0.9rem 1.25rem; font-size: 0.8rem; color: #9fb3cc; }
+    .sidebar .who-block form { margin-top: 0.5rem; }
+    .sidebar .who-block .btn { width: 100%; }
+    main { flex: 1; padding: 1.5rem; max-width: 1200px; margin: 0 auto; min-width: 0; }
     table { border-collapse: collapse; width: 100%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
     th, td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid #e5e8ec; font-size: 0.9rem; }
     th { background: #eef1f5; }
@@ -41,31 +47,36 @@
     code.secret { font-family: ui-monospace, monospace; background: #f1f1f1; padding: 0.15rem 0.4rem; border-radius: 0.25rem; }
   </style>
 </head>
-<body>
+<body{% if user %} class="with-sidebar"{% endif %}>
   {% if user %}
-  <header>
-    <span class="brand">Scanner Panel</span>
-    <a href="/">Bugün</a>
-    <a href="/repositories">Repolar</a>
-    <a href="/findings">SCA Bulguları</a>
-    <a href="/secrets">Secret Bulguları</a>
-    <a href="/action-groups">Aksiyon Grupları</a>
-    <a href="/blast-radius">Blast Radius</a>
-    <a href="/coverage">Coverage</a>
-    {% if user.role == "admin" %}
-    <a href="/audit-log">Audit Log</a>
-    <a href="/users">Kullanıcılar</a>
-    <a href="/owners">Sahipler</a>
-    <a href="/settings">Ayarlar</a>
-    {% endif %}
-    <a href="/tokens">API Token'larım</a>
-    <span class="spacer"></span>
-    <span class="who">{{ user.username }} ({{ user.role }})</span>
-    <form method="post" action="/logout" class="inline">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <button class="btn" type="submit">Çıkış</button>
-    </form>
-  </header>
+  {% set path = request.url.path %}
+  <div class="sidebar">
+    <div class="brand">Scanner Panel</div>
+    <nav>
+      <a href="/" {% if path == "/" %}class="active"{% endif %}>Bugün</a>
+      <a href="/repositories" {% if path.startswith("/repositories") %}class="active"{% endif %}>Repolar</a>
+      <a href="/findings" {% if path.startswith("/findings") %}class="active"{% endif %}>SCA Bulguları</a>
+      <a href="/secrets" {% if path.startswith("/secrets") %}class="active"{% endif %}>Secret Bulguları</a>
+      <a href="/action-groups" {% if path.startswith("/action-groups") %}class="active"{% endif %}>Aksiyon Grupları</a>
+      <a href="/blast-radius" {% if path.startswith("/blast-radius") %}class="active"{% endif %}>Blast Radius</a>
+      <a href="/coverage" {% if path.startswith("/coverage") %}class="active"{% endif %}>Coverage</a>
+      <a href="/tokens" {% if path.startswith("/tokens") %}class="active"{% endif %}>API Token'larım</a>
+      {% if user.role == "admin" %}
+      <div class="nav-section-label">Yönetim</div>
+      <a href="/owners" {% if path.startswith("/owners") %}class="active"{% endif %}>Sahipler</a>
+      <a href="/users" {% if path.startswith("/users") %}class="active"{% endif %}>Kullanıcılar</a>
+      <a href="/audit-log" {% if path.startswith("/audit-log") %}class="active"{% endif %}>Audit Log</a>
+      <a href="/settings" {% if path.startswith("/settings") %}class="active"{% endif %}>Ayarlar</a>
+      {% endif %}
+    </nav>
+    <div class="who-block">
+      <div>{{ user.username }} ({{ user.role }})</div>
+      <form method="post" action="/logout">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="btn" type="submit">Çıkış</button>
+      </form>
+    </div>
+  </div>
   {% endif %}
   <main>
     {% if flash_error %}<div class="flash flash-error">{{ flash_error }}</div>{% endif %}

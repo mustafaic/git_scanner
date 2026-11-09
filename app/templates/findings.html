@@ -22,7 +22,7 @@
       <td><a href="/findings/{{ f.id }}">{{ repo_names.get(f.repo_id, f.repo_id) }}</a></td>
       <td>{{ f.package_name }}</td>
       <td>{{ f.version }}</td>
-      <td><a href="/findings/{{ f.id }}">{{ f.canonical_vulnerability_id }}</a></td>
+      <td><a href="/findings/{{ f.id }}">{{ f.canonical_vulnerability_id | cve_id(f.aliases) }}</a></td>
       <td>{{ f.severity_cvss_score if f.severity_cvss_score is not none else "-" }}</td>
       <td>{% if f.kev %}⚠️ KEV{% endif %}</td>
       <td>{{ f.fix_status }}</td>
