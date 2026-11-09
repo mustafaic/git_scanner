@@ -70,6 +70,15 @@ class Settings(BaseSettings):
     # servisi; prod'da TLS terminasyonunun onunde bu DAIMA true olmali).
     session_cookie_secure: bool = True
 
+    # Asama 5: sifreli yedekleme (master_prompt.md 5: "Yedekler sifreli ve
+    # sunucu disinda"). Anahtar Docker secret/dosya yolundan okunur (ayni
+    # desen: github_app_private_key_path) -- DB'ye veya env'e duz metin
+    # YAZILMAZ. Bos ise backup script'i acik bir hata ile durur (sessizce
+    # sifresiz yedek ALMAZ).
+    backup_encryption_key_path: Optional[str] = None
+    backup_dir: str = "/backups"
+    backup_retention_days: int = 14
+
 
 def load_settings() -> Settings:
     return Settings()  # type: ignore[call-arg]  # pydantic-settings env'den doldurur

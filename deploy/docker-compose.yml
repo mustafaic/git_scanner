@@ -195,6 +195,43 @@ services:
     restart: unless-stopped
     networks: [backend]
 
+  # backup: canli DB'nin sifreli yedegini alir (master_prompt.md 5
+  # "Yedekler sifreli ve sunucu disinda"). Zamanlanmis calistirma host
+  # cron/Task Scheduler ile yapilir (bkz. RUNBOOK.md) -- compose icinde
+  # otomatik tekrarlanan bir loop YOK (kural 11: basit baslanir).
+  backup:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.orchestrator
+    command: ["python", "tools/backup.py"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-scanner}:${POSTGRES_PASSWORD:-scanner_dev_password}@postgres:5432/${POSTGRES_DB:-scanner}
+      BACKUP_ENCRYPTION_KEY_PATH: ${BACKUP_ENCRYPTION_KEY_PATH:-/run/secrets/backup_encryption_key}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+    volumes:
+      - ./secrets:/run/secrets:ro
+      - backups:/backups
+    networks: [backend]
+
+  # restore: SADECE izole bir hedefe (varsayilan: postgres-test) geri
+  # yukler -- tools/restore.py hedefin canli DATABASE_URL ile AYNI
+  # olmasini HER ZAMAN reddeder (bkz. deploy/docker-compose.yml ustteki
+  # 2026-11-08 canli veri kaybi olayi notu, postgres-test servisi).
+  restore:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.orchestrator
+    entrypoint: ["python", "tools/restore.py"]
+    environment:
+      # "Canli" referans -- restore.py bu deger ile --target-database-url'i
+      # karsilastirip ayniysa REDDEDER. Varsayilan hedef postgres-test'tir.
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-scanner}:${POSTGRES_PASSWORD:-scanner_dev_password}@postgres:5432/${POSTGRES_DB:-scanner}
+      BACKUP_ENCRYPTION_KEY_PATH: ${BACKUP_ENCRYPTION_KEY_PATH:-/run/secrets/backup_encryption_key}
+    volumes:
+      - ./secrets:/run/secrets:ro
+      - backups:/backups
+    networks: [backend]
+
 volumes:
   postgres_data:
   staging:
@@ -202,6 +239,7 @@ volumes:
   git_mirrors:
   staging-test:
   git_mirrors_test:
+  backups:
 
 networks:
   backend:

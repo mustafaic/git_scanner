@@ -9,7 +9,20 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 
 # git: Asama 3 secret taramasi icin kalici bare mirror onbellegi (git
 # clone --mirror / fetch), bkz. orchestrator/secret_scan.py.
-RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
+# postgresql-client-16: Asama 5 sifreli yedekleme/restore (pg_dump/psql),
+# bkz. tools/backup.py, tools/restore.py. SURUM 16'YA SABITLENIR (PGDG
+# deposu) -- taban imajin varsayilan deposu SADECE 17 veriyor (postgres:16
+# sunucusuyla MISMATCH: pg_dump 17 "SET transaction_timeout" gibi 16'da
+# TANINMAYAN GUC'lar yazar, pg_restore "ignored errors" ile GECER ama bu
+# garanti degil -- client/server surumu AYNI tutuluyor, kural 11).
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates gnupg lsb-release curl \
+    && install -d /usr/share/postgresql-common/pgdg \
+    && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+    && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client-16 \
+    && apt-get purge -y --auto-remove gnupg lsb-release curl \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt requirements-dev.txt ./
 RUN pip install --no-cache-dir -r requirements-dev.txt
@@ -17,6 +30,7 @@ RUN pip install --no-cache-dir -r requirements-dev.txt
 COPY core ./core
 COPY adapters ./adapters
 COPY orchestrator ./orchestrator
+COPY tools ./tools
 # NOT: worker/, app/ ve watchdog/ burada SADECE test amacli (tests/integration/test_extraction_postgres.py
 # gercek worker/main.py mantigini staging protokolu uzerinden test eder,
 # auth testleri app/auth_service.py'yi, test_watchdog_postgres.py de
