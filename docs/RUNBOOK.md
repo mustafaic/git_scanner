@@ -132,7 +132,21 @@ yöneticisinde) yedekleyin.
 | Panelde giriş döngüsü (sürekli /login) | CSRF cookie engellendi (tarayıcı ayarı) veya `SESSION_COOKIE_SECURE=true` + düz HTTP | `.env`'de `SESSION_COOKIE_SECURE` değerini ortamla eşleştirin |
 | Worker işleri hiç tamamlanmıyor | Worker container çökmüş/yeniden başlıyor | `docker compose logs worker`, `docker compose ps worker` |
 
-## 9. Heartbeat kurulumu (dead man's switch)
+## 9. Dependabot recall karşılaştırması (bağımsız doğrulama)
+
+Kendi read-only PAT'ınızla (ilgili repolarda `security_events` kapsamı,
+GitHub App izinlerine HİÇBİR ŞEY eklenmez) çalıştırın:
+```
+docker compose run --rm --entrypoint python orchestrator \
+  tools/dependabot_compare.py
+```
+(`DEPENDABOT_COMPARE_TOKEN` ortam değişkeni ile token verin.) Çıktı:
+hangi Dependabot alert'lerinin bizim `findings` tablomuzda karşılığı
+olmadığını ("KAÇIRILAN", recall gap) ve genel recall yüzdesini raporlar.
+Dependabot burada SADECE bağımsız bir doğrulama kaynağıdır, ürün akışına
+girmez.
+
+## 10. Heartbeat kurulumu (dead man's switch)
 
 `watchdog` servisi her döngüde son başarılı Hat A/Hat B zamanını kontrol
 eder. **Şirket içinde, bu sistemden AYRI bir makinede** çalışan bir

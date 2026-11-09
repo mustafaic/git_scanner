@@ -37,13 +37,14 @@ noktalardır. Her madde, ilgili kod/karar kaydına referans verir.
 
 ## Ölçülmemiş / doğrulanamayan noktalar
 
-8. **Precision/recall raporu yok.** master_prompt.md 8'deki TP/FP/FN
-   karşılaştırması (`tools/dependabot_compare.py`) **hiç yazılmadı** —
-   bunun için gerçek bir GitHub org'unda Dependabot alert'leri olan repolar
-   gerekir; bu depoda elle oluşturulmuş fixture'lar var (tests/fixtures/)
-   ama sistematik bir TP/FP/FN sayımı/karşılaştırması yapılmadı. İnsan
-   tarafından, gerçek bir org ile çalıştırılması gerekir (madde 8'in kendi
-   tanımı).
+8. **Precision/recall raporu henüz üretilmedi (2026-11-09 güncelleme: araç
+   artık var).** `tools/dependabot_compare.py` yazıldı ve karşılaştırma
+   mantığı (`core/dependabot_compare.py`) 10 unit testle doğrulandı —
+   ama HENÜZ gerçek bir GitHub org'una karşı ÇALIŞTIRILMADI (kendi read-only
+   PAT'ınızla, `security_events` kapsamıyla; master_prompt.md 8'in kendi
+   tanımı: "İnsan tarafından çalıştırılır"). Gerçek bir recall sayısı
+   üretmek için Dependabot alert'leri açık, bizim de taradığımız repolar
+   gerekir.
 9. **24 saatlik kesintisiz çalışma denemesi yapılmadı.** Servisler bu
    oturum boyunca (birkaç saat) kesintisiz ayakta kaldı (restart olmadan),
    ama resmi bir 24 saatlik soak test bu depoda çalıştırılmadı/kayıt altına
