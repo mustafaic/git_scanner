@@ -1,7 +1,7 @@
 """DB'ye dokunan auth islemleri (core/auth.py SAF kripto/politika katmanidir,
 bu modul onu User/Session modelleriyle birlestirir). Sadece `app` servisi
 kullanir (master_prompt.md 3.4: app GitHub key'i gormez; simetrik olarak
-orchestrator da kullanici/sifre/TOTP gormez)."""
+orchestrator da kullanici/sifre gormez)."""
 
 from __future__ import annotations
 
@@ -36,9 +36,12 @@ def record_audit(
     )
 
 
-def authenticate(db: DbSession, username: str, password: str, totp_code: Optional[str]) -> Tuple[Optional[User], Optional[str]]:
+def authenticate(db: DbSession, username: str, password: str) -> Tuple[Optional[User], Optional[str]]:
     """Donen: (user_or_None, hata_kodu_or_None). Basarisizsa user HER ZAMAN
-    None'dir (kullanici var/yok bilgisi disariya sizdirilmaz)."""
+    None'dir (kullanici var/yok bilgisi disariya sizdirilmaz).
+
+    NOT: TOTP (2FA) kullanici karariyla KALDIRILDI (2026-11-09, bkz.
+    docs/ASSUMPTIONS.md #14) -- giris sadece parolaya dayanir."""
     user = get_user_by_username(db, username)
     if user is None or not user.is_active:
         return None, "invalid_credentials"
@@ -51,25 +54,6 @@ def authenticate(db: DbSession, username: str, password: str, totp_code: Optiona
         user.failed_login_attempts, user.locked_until = auth.compute_lockout_after_failure(user.failed_login_attempts)
         record_audit(db, user, "login_failed", "user", str(user.id))
         return None, "invalid_credentials"
-
-    if user.totp_enabled:
-        if not totp_code:
-            return None, "totp_required"
-        totp_ok = auth.verify_totp(user.totp_secret, totp_code)
-        if not totp_ok:
-            # Kurtarma kodu olabilir.
-            idx = auth.verify_and_consume_recovery_code(totp_code, user.recovery_code_hashes)
-            if idx is None:
-                user.failed_login_attempts, user.locked_until = auth.compute_lockout_after_failure(user.failed_login_attempts)
-                record_audit(db, user, "login_failed_totp", "user", str(user.id))
-                return None, "invalid_totp"
-            remaining = list(user.recovery_code_hashes)
-            del remaining[idx]
-            user.recovery_code_hashes = remaining
-            record_audit(db, user, "login_recovery_code_used", "user", str(user.id))
-    elif user.role == "admin":
-        # master_prompt.md 5: "Admin icin TOTP (2FA) zorunlu".
-        return None, "totp_setup_required"
 
     user.failed_login_attempts = 0
     user.locked_until = None

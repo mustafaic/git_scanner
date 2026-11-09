@@ -36,29 +36,22 @@ def _clean(engine):
     yield
 
 
-def _make_admin(session, username="admin", password="Str0ng!Passw0rd#2026", totp_enabled=True):
-    secret = auth.generate_totp_secret() if totp_enabled else None
-    user = User(
-        username=username, password_hash=auth.hash_password(password), role="admin",
-        totp_secret=secret, totp_enabled=totp_enabled,
-    )
+def _make_admin(session, username="admin", password="Str0ng!Passw0rd#2026"):
+    user = User(username=username, password_hash=auth.hash_password(password), role="admin")
     session.add(user)
     session.flush()
-    return user, secret
+    return user
 
 
-def test_authenticate_success_with_correct_password_and_totp(engine):
-    import pyotp
-
+def test_authenticate_success_with_correct_password(engine):
     session_factory = sessionmaker(bind=engine, future=True, expire_on_commit=False)
     with session_factory() as session:
-        user, secret = _make_admin(session)
+        user = _make_admin(session)
         session.commit()
         user_id = user.id
 
     with session_factory() as session:
-        code = pyotp.TOTP(secret).now()
-        result_user, error = authenticate(session, "admin", "Str0ng!Passw0rd#2026", code)
+        result_user, error = authenticate(session, "admin", "Str0ng!Passw0rd#2026")
         session.commit()
     assert error is None
     assert result_user is not None
@@ -72,7 +65,7 @@ def test_authenticate_fails_with_wrong_password_no_user_leak(engine):
         session.commit()
 
     with session_factory() as session:
-        user, error = authenticate(session, "admin", "wrong-password", "123456")
+        user, error = authenticate(session, "admin", "wrong-password")
         session.commit()
     assert user is None
     assert error == "invalid_credentials"
@@ -82,24 +75,10 @@ def test_authenticate_unknown_username_same_error_as_wrong_password(engine):
     """Kullanici var/yok bilgisi SIZDIRILMAMALI (enumeration onlenir)."""
     session_factory = sessionmaker(bind=engine, future=True, expire_on_commit=False)
     with session_factory() as session:
-        user, error = authenticate(session, "ghost-user", "whatever", None)
+        user, error = authenticate(session, "ghost-user", "whatever")
         session.commit()
     assert user is None
     assert error == "invalid_credentials"
-
-
-def test_authenticate_admin_without_totp_setup_is_rejected(engine):
-    """master_prompt.md 5: Admin icin TOTP ZORUNLU."""
-    session_factory = sessionmaker(bind=engine, future=True, expire_on_commit=False)
-    with session_factory() as session:
-        _make_admin(session, totp_enabled=False)
-        session.commit()
-
-    with session_factory() as session:
-        user, error = authenticate(session, "admin", "Str0ng!Passw0rd#2026", None)
-        session.commit()
-    assert user is None
-    assert error == "totp_setup_required"
 
 
 def test_authenticate_locks_account_after_max_failed_attempts(engine):
@@ -110,11 +89,11 @@ def test_authenticate_locks_account_after_max_failed_attempts(engine):
 
     for _ in range(auth.MAX_FAILED_LOGIN_ATTEMPTS):
         with session_factory() as session:
-            authenticate(session, "admin", "wrong-password", None)
+            authenticate(session, "admin", "wrong-password")
             session.commit()
 
     with session_factory() as session:
-        user, error = authenticate(session, "admin", "Str0ng!Passw0rd#2026", "123456")
+        user, error = authenticate(session, "admin", "Str0ng!Passw0rd#2026")
         session.commit()
     assert user is None
     assert error == "account_locked"
@@ -126,7 +105,7 @@ def test_authenticate_logs_audit_entries(engine):
         _make_admin(session)
         session.commit()
     with session_factory() as session:
-        authenticate(session, "admin", "wrong-password", None)
+        authenticate(session, "admin", "wrong-password")
         session.commit()
     with session_factory() as session:
         entry = session.query(AuditLog).filter_by(action="login_failed").one()
@@ -136,7 +115,7 @@ def test_authenticate_logs_audit_entries(engine):
 def test_session_create_and_validate_roundtrip(engine):
     session_factory = sessionmaker(bind=engine, future=True, expire_on_commit=False)
     with session_factory() as session:
-        user, _ = _make_admin(session)
+        user = _make_admin(session)
         token = create_session(session, user)
         session.commit()
 
@@ -156,7 +135,7 @@ def test_session_invalid_token_returns_none(engine):
 def test_revoked_session_is_rejected(engine):
     session_factory = sessionmaker(bind=engine, future=True, expire_on_commit=False)
     with session_factory() as session:
-        user, _ = _make_admin(session)
+        user = _make_admin(session)
         token = create_session(session, user)
         session.commit()
 

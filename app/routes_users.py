@@ -1,13 +1,9 @@
-"""A10 (kapsamı sınırlandırılmış) kullanıcı yönetimi -- SADECE admin
-(master_prompt.md 6 A10). KASITLI SINIRLAMA: panelden yalnızca VIEWER
-oluşturulabilir/parolası sıfırlanabilir/aktif-pasif yapılabilir. Yeni bir
-ADMIN hesabı oluşturmak ve TOTP sıfırlamak (herhangi bir rol için) HER
-ZAMAN `tools/create_admin.py` (sunucu CLI) gerektirir -- cunku ikisi de
-bir "sir paylasma seremonisi" (TOTP secret/QR, kurtarma kodlari) icerir ve
-bunun icin guvenli bir disaridan-kanal (admin'in ekraninda beliren bir
-sirrin BASKA bir kullaniciya web uzerinden iletilmesi) YOKTUR -- CLI
-zaten sunucuya fiziksel/SSH erisimi olan kisi tarafindan calistirilir,
-bu da dogal bir guvenli kanaldir. (bkz. docs/ASSUMPTIONS.md)."""
+"""A10 kullanıcı yönetimi -- SADECE admin (master_prompt.md 6 A10).
+Oluşturma/aktif-pasif/parola sıfırlama rol farkı olmadan panelden yapılır
+(TOTP (2FA) kaldırıldığı için admin oluşturmanın bir "sır paylaşma
+seremonisi" gerektirmesi SON BULDU, bkz. docs/ASSUMPTIONS.md #14) --
+`tools/create_admin.py` artık SADECE ilk bootstrap (henuz panelde giris
+yapabilecek hicbir kullanici yokken) icin gereklidir."""
 
 from __future__ import annotations
 
@@ -33,14 +29,18 @@ def list_users(request: Request, db: DbSession = Depends(get_db), user: User = D
 
 
 @router.post("/users")
-def create_viewer(
+def create_user(
     request: Request,
     username: str = Form(...),
     password: str = Form(...),
+    role: str = Form("viewer"),
     db: DbSession = Depends(get_db),
     user: User = Depends(require_admin),
     _csrf: None = Depends(require_csrf),
 ):
+    if role not in ("admin", "viewer"):
+        raise HTTPException(status_code=400, detail="gecersiz rol")
+
     existing = db.execute(select(User).where(User.username == username)).scalar_one_or_none()
     if existing is not None:
         users = db.execute(select(User).order_by(User.username)).scalars().all()
@@ -53,10 +53,10 @@ def create_viewer(
         users = db.execute(select(User).order_by(User.username)).scalars().all()
         return render_page(request, "users.html", {"users": users, "error": reason}, user=user, status_code=400)
 
-    new_user = User(username=username, password_hash=auth.hash_password(password), role="viewer")
+    new_user = User(username=username, password_hash=auth.hash_password(password), role=role)
     db.add(new_user)
     db.flush()
-    record_audit(db, user, "user_created", "user", str(new_user.id), {"username": username, "role": "viewer"})
+    record_audit(db, user, "user_created", "user", str(new_user.id), {"username": username, "role": role})
     return RedirectResponse("/users", status_code=303)
 
 

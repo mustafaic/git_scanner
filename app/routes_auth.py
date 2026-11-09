@@ -19,9 +19,6 @@ _settings = load_settings()
 _ERROR_MESSAGES = {
     "invalid_credentials": "Kullanıcı adı veya parola hatalı.",
     "account_locked": "Hesap çok sayıda hatalı girişten dolayı geçici olarak kilitli, lütfen sonra tekrar deneyin.",
-    "totp_required": "Bu hesap için TOTP kodu gerekli.",
-    "invalid_totp": "TOTP kodu (veya kurtarma kodu) hatalı.",
-    "totp_setup_required": "Admin hesabı için TOTP kurulumu tamamlanmamış; sunucuda `tools/create_admin.py --reset-totp` çalıştırın.",
 }
 
 
@@ -37,11 +34,10 @@ async def login_submit(
     request: Request,
     username: str = Form(...),
     password: str = Form(...),
-    totp_code: str = Form(""),
     db: DbSession = Depends(get_db),
     _csrf: None = Depends(require_csrf),
 ):
-    user, error = authenticate(db, username, password, totp_code or None)
+    user, error = authenticate(db, username, password)
     if error is not None:
         return render_page(
             request,

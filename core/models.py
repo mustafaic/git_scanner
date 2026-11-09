@@ -358,8 +358,8 @@ class FindingSource(Base):
 
 class User(Base):
     """Yerel hesap (master_prompt.md 5 "Uygulama guvenligi"). Harici IdP yok.
-    Admin icin TOTP ZORUNLU (uygulama katmaninda enforce edilir, bkz.
-    core/auth.py); viewer icin opsiyonel."""
+    TOTP (2FA) KULLANICI KARARIYLA KALDIRILDI (2026-11-09, bkz.
+    docs/ASSUMPTIONS.md #14) -- sadece parola ile giris yapilir."""
 
     __tablename__ = "users"
     __table_args__ = (CheckConstraint("role in ('admin','viewer')", name="users_role_check"),)
@@ -369,12 +369,6 @@ class User(Base):
     # argon2id hash (core.auth) -- DUZ METIN PAROLA ASLA TUTULMAZ.
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
     role: Mapped[str] = mapped_column(String(20), nullable=False)
-    # TOTP sirri -- hassas, ASLA loglanmaz (core.logging_setup.register_secret
-    # ile maskeleme listesine eklenir, bkz. core/auth.py).
-    totp_secret: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    totp_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    # Kurtarma kodlari TEK KULLANIMLIK ve HASH'LENMIS tutulur (duz metin degil).
-    recovery_code_hashes: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     failed_login_attempts: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0)
     locked_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)

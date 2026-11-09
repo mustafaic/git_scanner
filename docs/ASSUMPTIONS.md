@@ -159,7 +159,16 @@ bu istisnayı ve TÜM diğer yazma uç noktalarının (bulgu durumu, secret
 rotasyonu, elle tetikleme, audit log görüntüleme) viewer için 403 ile
 reddedildiğini doğrular.
 
-## 12. A10 kullanıcı yönetimi paneli: admin oluşturma ve TOTP sıfırlama kapsam dışı (2026-11-08)
+## 12. ~~A10 kullanıcı yönetimi paneli: admin oluşturma ve TOTP sıfırlama kapsam dışı~~ — GEÇERSİZ (2026-11-09, bkz. #14)
+
+**GÜNCELLEME (2026-11-09):** Bu kararın tek gerekçesi TOTP'nin "sır
+paylaşma seremonisi" idi. TOTP kullanıcı kararıyla tamamen kaldırıldığı
+için (#14) bu kısıtlama artık GEÇERSİZ -- panelden (`/users`) hem admin
+hem viewer oluşturulabilir. `tools/create_admin.py` SADECE ilk bootstrap
+(henüz panelde giriş yapabilecek hiçbir kullanıcı yokken) için kalır.
+Orijinal (artık geçersiz) karar aşağıda referans için tutuluyor:
+
+### 12. (orijinal, 2026-11-08) A10 kullanıcı yönetimi paneli: admin oluşturma ve TOTP sıfırlama kapsam dışı
 
 **Karar:** master_prompt.md 6 (A10) "kullanıcı oluştur/devre dışı bırak/rol
 ver/parola ve TOTP sıfırla" özelliğini panelden (`/users`) sadece
@@ -200,4 +209,31 @@ orchestrator riskiyle sağlıyor.
 **Şema hazır:** `repo_owners.source` sütunu `'codeowners'` değerini zaten
 kabul ediyor (CheckConstraint) -- CODEOWNERS desteği eklenince şema
 değişikliği GEREKMEYECEK, sadece orchestrator'a bir senkron adımı eklenecek.
+
+## 14. TOTP (2FA) kaldırıldı — KULLANICI KARARI (2026-11-09)
+
+**Karar:** master_prompt.md 5'teki "Admin için TOTP (2FA) zorunlu
+(kurtarma kodlarıyla); viewer için opsiyonel" gereksinimi kullanıcı
+tarafından **tamamen kaldırıldı**. Giriş artık sadece kullanıcı adı +
+parola ile yapılır.
+
+**Kapsam:** `core/auth.py` (generate_totp_secret, totp_provisioning_uri,
+verify_totp, generate/hash/verify_and_consume_recovery_code fonksiyonları
+silindi), `core/models.py` (`users.totp_secret`, `totp_enabled`,
+`recovery_code_hashes` sütunları migration 0008 ile DÜŞÜRÜLDÜ),
+`app/auth_service.py` (`authenticate()` artık `totp_code` parametresi
+almıyor), `app/routes_auth.py` + `login.html` (TOTP alanı kaldırıldı),
+`tools/create_admin.py` (TOTP kurulum akışı kaldırıldı), `pyotp` bağımlılığı
+`requirements.txt`'den çıkarıldı.
+
+**Yan etki (#12'yi geçersiz kılar):** Admin oluşturmanın TOTP yüzünden
+CLI-only olması kuralının gerekçesi ortadan kalktığı için panelden
+(`/users`) artık hem admin hem viewer oluşturulabiliyor -- `tools/
+create_admin.py` sadece ilk bootstrap için kalıyor.
+
+**Güvenlik notu (şeffaflık icin kayda geçirildi):** Bu, master_prompt.md 5
+"Güvenlik gereksinimleri" bölümündeki açık bir maddeyi geriye alan bir
+karardır -- sistem artık tek faktörlü (sadece parola) kimlik doğrulama
+kullanıyor. Argon2id parola hash'leme, giriş rate-limit + geçici kilitleme
+ve oturum güvenliği (HttpOnly+SameSite, boşta zaman aşımı) DEĞİŞMEDİ.
 

@@ -1,9 +1,9 @@
-"""Yerel hesap + TOTP + oturum yonetimi (master_prompt.md 5 "Uygulama
-guvenligi"). Harici IdP yok. Parolalar argon2id, TOTP RFC 6238 (pyotp).
+"""Yerel hesap + oturum yonetimi (master_prompt.md 5 "Uygulama guvenligi").
+Harici IdP yok. Parolalar argon2id.
 
-GUVENLIK: TOTP sirri ve kurtarma kodlari HASSAS -- core.logging_setup
-register_secret() ile maskeleme listesine eklenir, asla loglanmaz/donulmez
-(kurtarma kodlari SADECE olusturulduklari anda duz metin olarak gosterilir).
+NOT: TOTP (2FA) kullanici karariyla KALDIRILDI (2026-11-09, bkz.
+docs/ASSUMPTIONS.md #14) -- bu modul artik SADECE parola/oturum/API-token
+mantigini icerir.
 """
 
 from __future__ import annotations
@@ -12,9 +12,8 @@ import datetime as dt
 import re
 import secrets
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import Optional, Tuple
 
-import pyotp
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError, VerificationError
 
@@ -23,7 +22,6 @@ from core.logging_setup import register_secret
 _hasher = PasswordHasher()
 
 SESSION_TOKEN_BYTES = 32
-RECOVERY_CODE_COUNT = 10
 MAX_FAILED_LOGIN_ATTEMPTS = 5
 LOCKOUT_DURATION_SECONDS = 15 * 60
 
@@ -56,44 +54,6 @@ def check_password_policy(password: str) -> Tuple[bool, Optional[str]]:
     if sum(categories) < 3:
         return False, "Parola en az 3 karakter sinifi icermeli (kucuk/buyuk harf, rakam, sembol)"
     return True, None
-
-
-def generate_totp_secret() -> str:
-    secret = pyotp.random_base32()
-    register_secret(secret)
-    return secret
-
-
-def totp_provisioning_uri(secret: str, username: str, issuer: str = "Scanner Platform") -> str:
-    return pyotp.TOTP(secret).provisioning_uri(name=username, issuer_name=issuer)
-
-
-def verify_totp(secret: str, code: str) -> bool:
-    if not secret or not code:
-        return False
-    return pyotp.TOTP(secret).verify(code, valid_window=1)
-
-
-def generate_recovery_codes(count: int = RECOVERY_CODE_COUNT) -> List[str]:
-    """Donen degerler DUZ METIN -- SADECE olusturma aninda kullaniciya bir
-    kez gosterilir, DB'ye sadece hash'leri yazilir (bkz. hash_recovery_codes)."""
-    codes = [secrets.token_hex(5) for _ in range(count)]
-    for code in codes:
-        register_secret(code)
-    return codes
-
-
-def hash_recovery_codes(codes: List[str]) -> List[str]:
-    return [hash_password(code) for code in codes]
-
-
-def verify_and_consume_recovery_code(raw_code: str, code_hashes: List[str]) -> Optional[int]:
-    """Eslesirse hash listesindeki INDEKSI doner (cagiran taraf o indeksi
-    listeden cikarip DB'yi guncellemeli -- tek kullanimlik)."""
-    for i, h in enumerate(code_hashes):
-        if verify_password(raw_code, h):
-            return i
-    return None
 
 
 def generate_session_token() -> str:

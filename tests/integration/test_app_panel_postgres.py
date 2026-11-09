@@ -14,7 +14,6 @@ import os
 import sys
 from pathlib import Path
 
-import pyotp
 import pytest
 from sqlalchemy import create_engine, text
 
@@ -63,19 +62,15 @@ def client():
 
 
 def _make_admin(engine, username="admin"):
-    secret = auth.generate_totp_secret()
     from sqlalchemy.orm import sessionmaker
 
     Session = sessionmaker(bind=engine, future=True)
     with Session() as session:
-        user = User(
-            username=username, password_hash=auth.hash_password(ADMIN_PASSWORD), role="admin",
-            totp_secret=secret, totp_enabled=True,
-        )
+        user = User(username=username, password_hash=auth.hash_password(ADMIN_PASSWORD), role="admin")
         session.add(user)
         session.commit()
         session.refresh(user)
-        return user.id, secret
+        return user.id
 
 
 def _make_viewer(engine, username="viewer"):
@@ -90,7 +85,7 @@ def _make_viewer(engine, username="viewer"):
         return user.id
 
 
-def _login(client, username, password, totp_code=""):
+def _login(client, username, password):
     client.get("/login")
     # ensure_csrf_token() SADECE cookie HENUZ yoksa Set-Cookie yazar --
     # tekrarlanan login cagrilarinda (ör. kilitleme testi) ikinci+ GET
@@ -98,7 +93,7 @@ def _login(client, username, password, totp_code=""):
     # KALICI cookie jar'indan (client.cookies) okunmali, response'tan degil.
     token = client.cookies.get(CSRF_COOKIE_NAME)
     return client.post(
-        "/login", data={"username": username, "password": password, "totp_code": totp_code, "csrf_token": token},
+        "/login", data={"username": username, "password": password, "csrf_token": token},
         follow_redirects=False,
     )
 
@@ -109,13 +104,12 @@ def _csrf_token(client):
 
 
 def test_login_flow_success_failure_lockout_and_audit(client, engine):
-    _, secret = _make_admin(engine)
-    code = pyotp.TOTP(secret).now()
+    _make_admin(engine)
 
-    resp = _login(client, "admin", "wrong-password", code)
+    resp = _login(client, "admin", "wrong-password")
     assert resp.status_code == 401
 
-    resp_ok = _login(client, "admin", ADMIN_PASSWORD, code)
+    resp_ok = _login(client, "admin", ADMIN_PASSWORD)
     assert resp_ok.status_code == 303
     assert "session_id" in resp_ok.cookies
 
@@ -129,7 +123,7 @@ def test_login_lockout_after_max_failed_attempts(client, engine):
     _make_admin(engine)
     for _ in range(auth.MAX_FAILED_LOGIN_ATTEMPTS):
         _login(client, "admin", "wrong-password")
-    resp = _login(client, "admin", ADMIN_PASSWORD, "000000")
+    resp = _login(client, "admin", ADMIN_PASSWORD)
     assert resp.status_code == 401
     assert "kilitli" in resp.text
 
@@ -137,11 +131,11 @@ def test_login_lockout_after_max_failed_attempts(client, engine):
 def test_login_rejects_without_csrf_token(client, engine):
     _make_admin(engine)
     client.get("/login")
-    resp = client.post("/login", data={"username": "admin", "password": ADMIN_PASSWORD, "totp_code": ""})
+    resp = client.post("/login", data={"username": "admin", "password": ADMIN_PASSWORD})
     assert resp.status_code == 403
 
 
-def test_viewer_login_without_totp_succeeds(client, engine):
+def test_viewer_login_succeeds(client, engine):
     _make_viewer(engine)
     resp = _login(client, "viewer", VIEWER_PASSWORD)
     assert resp.status_code == 303
@@ -155,7 +149,7 @@ def test_unauthenticated_dashboard_redirects_to_login(client):
 
 def test_viewer_cannot_change_finding_status_admin_can(client, engine):
     viewer_id = _make_viewer(engine)
-    admin_id, secret = _make_admin(engine)
+    admin_id = _make_admin(engine)
 
     from sqlalchemy.orm import sessionmaker
 
@@ -183,8 +177,7 @@ def test_viewer_cannot_change_finding_status_admin_can(client, engine):
     assert resp.status_code == 403
 
     client.post("/logout", data={"csrf_token": token})
-    code = pyotp.TOTP(secret).now()
-    _login(client, "admin", ADMIN_PASSWORD, code)
+    _login(client, "admin", ADMIN_PASSWORD)
     token = _csrf_token(client)
     resp = client.post(
         f"/findings/{finding_id}/status",
@@ -205,7 +198,7 @@ def test_viewer_cannot_change_finding_status_admin_can(client, engine):
 
 
 def test_finding_status_cannot_be_set_to_resolved_manually(client, engine):
-    _, secret = _make_admin(engine)
+    _make_admin(engine)
     from sqlalchemy.orm import sessionmaker
 
     Session = sessionmaker(bind=engine, future=True)
@@ -223,8 +216,7 @@ def test_finding_status_cannot_be_set_to_resolved_manually(client, engine):
         session.commit()
         finding_id = finding.id
 
-    code = pyotp.TOTP(secret).now()
-    _login(client, "admin", ADMIN_PASSWORD, code)
+    _login(client, "admin", ADMIN_PASSWORD)
     token = _csrf_token(client)
     resp = client.post(
         f"/findings/{finding_id}/status", data={"new_status": "RESOLVED", "reason": "x", "csrf_token": token},
@@ -233,7 +225,7 @@ def test_finding_status_cannot_be_set_to_resolved_manually(client, engine):
 
 
 def test_secret_rotation_sets_rotated_fields_and_audit(client, engine):
-    admin_id, secret = _make_admin(engine)
+    admin_id = _make_admin(engine)
     from sqlalchemy.orm import sessionmaker
 
     Session = sessionmaker(bind=engine, future=True)
@@ -251,8 +243,7 @@ def test_secret_rotation_sets_rotated_fields_and_audit(client, engine):
         session.commit()
         secret_id = sf.id
 
-    code = pyotp.TOTP(secret).now()
-    _login(client, "admin", ADMIN_PASSWORD, code)
+    _login(client, "admin", ADMIN_PASSWORD)
     token = _csrf_token(client)
     resp = client.post(
         f"/secrets/{secret_id}/status",
@@ -337,7 +328,7 @@ def test_raw_secret_value_never_appears_in_html_or_api(client, engine):
     raw_secret = "ghp_ThisIsAFakeButRealisticLookingTokenForTestingOnly123456"
     content_hash = hashlib.sha256(raw_secret.encode("utf-8")).hexdigest()
 
-    admin_id, secret = _make_admin(engine)
+    admin_id = _make_admin(engine)
     from sqlalchemy.orm import sessionmaker
 
     Session = sessionmaker(bind=engine, future=True)
@@ -355,8 +346,7 @@ def test_raw_secret_value_never_appears_in_html_or_api(client, engine):
         session.commit()
         secret_id = sf.id
 
-    code = pyotp.TOTP(secret).now()
-    _login(client, "admin", ADMIN_PASSWORD, code)
+    _login(client, "admin", ADMIN_PASSWORD)
 
     html_resp = client.get(f"/secrets/{secret_id}")
     assert html_resp.status_code == 200
@@ -391,7 +381,7 @@ def test_viewer_can_only_reach_own_token_write_endpoints_all_other_writes_blocke
     gordugu veriyi baska bir kanaldan cekmek icin). Asagidaki TUM diger
     yazma uc noktalari viewer icin 401/403/404 ile reddedilmeli."""
     viewer_id = _make_viewer(engine)
-    admin_id, _ = _make_admin(engine)
+    admin_id = _make_admin(engine)
 
     from sqlalchemy.orm import sessionmaker
 
@@ -461,9 +451,8 @@ def test_viewer_can_only_reach_own_token_write_endpoints_all_other_writes_blocke
 # --- Stage 4 part 1: A10 kullanici yonetimi (admin-only, viewer-only olusturma) ---
 
 def test_admin_creates_viewer_toggles_active_and_resets_password(client, engine):
-    admin_id, secret = _make_admin(engine)
-    code = pyotp.TOTP(secret).now()
-    _login(client, "admin", ADMIN_PASSWORD, code)
+    admin_id = _make_admin(engine)
+    _login(client, "admin", ADMIN_PASSWORD)
     csrf = _csrf_token(client)
 
     resp = client.post("/users", data={"username": "newviewer", "password": VIEWER_PASSWORD, "csrf_token": csrf}, follow_redirects=False)
@@ -507,19 +496,17 @@ def test_admin_creates_viewer_toggles_active_and_resets_password(client, engine)
 
 
 def test_admin_cannot_disable_own_account(client, engine):
-    admin_id, secret = _make_admin(engine)
-    code = pyotp.TOTP(secret).now()
-    _login(client, "admin", ADMIN_PASSWORD, code)
+    admin_id = _make_admin(engine)
+    _login(client, "admin", ADMIN_PASSWORD)
     csrf = _csrf_token(client)
     resp = client.post(f"/users/{admin_id}/toggle-active", data={"csrf_token": csrf}, follow_redirects=False)
     assert resp.status_code == 400
 
 
 def test_create_user_rejects_duplicate_username_and_weak_password(client, engine):
-    admin_id, secret = _make_admin(engine)
+    admin_id = _make_admin(engine)
     _make_viewer(engine, username="existing")
-    code = pyotp.TOTP(secret).now()
-    _login(client, "admin", ADMIN_PASSWORD, code)
+    _login(client, "admin", ADMIN_PASSWORD)
     csrf = _csrf_token(client)
 
     dup_resp = client.post("/users", data={"username": "existing", "password": VIEWER_PASSWORD, "csrf_token": csrf})
@@ -532,7 +519,7 @@ def test_create_user_rejects_duplicate_username_and_weak_password(client, engine
 # --- Stage 4 part 1: A1 aksiyon gruplari + A2 blast radius -----------------
 
 def test_action_groups_group_findings_by_package_and_fix_version(client, engine):
-    admin_id, secret = _make_admin(engine)
+    admin_id = _make_admin(engine)
     from sqlalchemy.orm import sessionmaker
 
     Session = sessionmaker(bind=engine, future=True)
@@ -555,8 +542,7 @@ def test_action_groups_group_findings_by_package_and_fix_version(client, engine)
         ])
         session.commit()
 
-    code = pyotp.TOTP(secret).now()
-    _login(client, "admin", ADMIN_PASSWORD, code)
+    _login(client, "admin", ADMIN_PASSWORD)
     resp = client.get("/action-groups")
     assert resp.status_code == 200
     assert "lodash" in resp.text
@@ -565,7 +551,7 @@ def test_action_groups_group_findings_by_package_and_fix_version(client, engine)
 
 
 def test_action_groups_shows_warning_instead_of_hint_for_unsafe_package_name(client, engine):
-    admin_id, secret = _make_admin(engine)
+    admin_id = _make_admin(engine)
     from sqlalchemy.orm import sessionmaker
 
     Session = sessionmaker(bind=engine, future=True)
@@ -578,8 +564,7 @@ def test_action_groups_shows_warning_instead_of_hint_for_unsafe_package_name(cli
         ))
         session.commit()
 
-    code = pyotp.TOTP(secret).now()
-    _login(client, "admin", ADMIN_PASSWORD, code)
+    _login(client, "admin", ADMIN_PASSWORD)
     resp = client.get("/action-groups")
     assert resp.status_code == 200
     assert "rm -rf" not in resp.text or "doğrulanamadı" in resp.text
@@ -587,7 +572,7 @@ def test_action_groups_shows_warning_instead_of_hint_for_unsafe_package_name(cli
 
 
 def test_blast_radius_search_finds_affected_repos(client, engine):
-    admin_id, secret = _make_admin(engine)
+    admin_id = _make_admin(engine)
     from sqlalchemy.orm import sessionmaker
 
     Session = sessionmaker(bind=engine, future=True)
@@ -600,8 +585,7 @@ def test_blast_radius_search_finds_affected_repos(client, engine):
         ))
         session.commit()
 
-    code = pyotp.TOTP(secret).now()
-    _login(client, "admin", ADMIN_PASSWORD, code)
+    _login(client, "admin", ADMIN_PASSWORD)
     resp = client.get("/blast-radius", params={"q": "left-pad"})
     assert resp.status_code == 200
     assert "acme/blast" in resp.text
@@ -613,7 +597,7 @@ def test_blast_radius_search_finds_affected_repos(client, engine):
 # --- Stage 4 part 1: A3 coverage ------------------------------------------
 
 def test_coverage_page_surfaces_lockfile_less_partial_and_lagging_signals(client, engine):
-    admin_id, secret = _make_admin(engine)
+    admin_id = _make_admin(engine)
     from sqlalchemy.orm import sessionmaker
 
     Session = sessionmaker(bind=engine, future=True)
@@ -638,8 +622,7 @@ def test_coverage_page_surfaces_lockfile_less_partial_and_lagging_signals(client
             {"t": dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=2)},
         )
 
-    code = pyotp.TOTP(secret).now()
-    _login(client, "admin", ADMIN_PASSWORD, code)
+    _login(client, "admin", ADMIN_PASSWORD)
     resp = client.get("/coverage")
     assert resp.status_code == 200
     assert "acme/no-lockfile" in resp.text
@@ -650,7 +633,7 @@ def test_coverage_page_surfaces_lockfile_less_partial_and_lagging_signals(client
 # --- Stage 4 part 2: A9 CSV/JSON export -------------------------------------
 
 def test_findings_export_csv_and_json_contain_expected_data(client, engine):
-    admin_id, secret = _make_admin(engine)
+    admin_id = _make_admin(engine)
     from sqlalchemy.orm import sessionmaker
 
     Session = sessionmaker(bind=engine, future=True)
@@ -663,8 +646,7 @@ def test_findings_export_csv_and_json_contain_expected_data(client, engine):
         ))
         session.commit()
 
-    code = pyotp.TOTP(secret).now()
-    _login(client, "admin", ADMIN_PASSWORD, code)
+    _login(client, "admin", ADMIN_PASSWORD)
 
     csv_resp = client.get("/findings/export.csv")
     assert csv_resp.status_code == 200
@@ -682,7 +664,7 @@ def test_findings_export_csv_and_json_contain_expected_data(client, engine):
 def test_findings_detail_route_still_works_after_adding_export_routes(client, engine):
     """Route siralama regresyon testi: /findings/export.csv eklenmesi
     /findings/{finding_id}'i BOZMAMALI (bkz. app/main.py router sira notu)."""
-    _, secret = _make_admin(engine)
+    _make_admin(engine)
     from sqlalchemy.orm import sessionmaker
 
     Session = sessionmaker(bind=engine, future=True)
@@ -697,15 +679,14 @@ def test_findings_detail_route_still_works_after_adding_export_routes(client, en
         session.commit()
         finding_id = finding.id
 
-    code = pyotp.TOTP(secret).now()
-    _login(client, "admin", ADMIN_PASSWORD, code)
+    _login(client, "admin", ADMIN_PASSWORD)
     resp = client.get(f"/findings/{finding_id}")
     assert resp.status_code == 200
     assert "GHSA-route-1" in resp.text
 
 
 def test_secrets_export_csv_never_contains_raw_secret(client, engine):
-    admin_id, secret = _make_admin(engine)
+    admin_id = _make_admin(engine)
     from sqlalchemy.orm import sessionmaker
 
     Session = sessionmaker(bind=engine, future=True)
@@ -717,8 +698,7 @@ def test_secrets_export_csv_never_contains_raw_secret(client, engine):
         ))
         session.commit()
 
-    code = pyotp.TOTP(secret).now()
-    _login(client, "admin", ADMIN_PASSWORD, code)
+    _login(client, "admin", ADMIN_PASSWORD)
     resp = client.get("/secrets/export.csv")
     assert resp.status_code == 200
     assert "acme/secret-export" in resp.text
@@ -735,18 +715,16 @@ def test_audit_log_export_is_admin_only(client, engine):
 # --- Stage 4 part 3: A10 settings (SLA + notifications) + A8 SLA display ---
 
 def test_settings_page_shows_defaults_when_unset(client, engine):
-    _, secret = _make_admin(engine)
-    code = pyotp.TOTP(secret).now()
-    _login(client, "admin", ADMIN_PASSWORD, code)
+    _make_admin(engine)
+    _login(client, "admin", ADMIN_PASSWORD)
     resp = client.get("/settings")
     assert resp.status_code == 200
     assert 'value="1"' in resp.text  # kev varsayilani
 
 
 def test_update_sla_settings_persists_and_is_audited(client, engine):
-    admin_id, secret = _make_admin(engine)
-    code = pyotp.TOTP(secret).now()
-    _login(client, "admin", ADMIN_PASSWORD, code)
+    admin_id = _make_admin(engine)
+    _login(client, "admin", ADMIN_PASSWORD)
     csrf = _csrf_token(client)
 
     resp = client.post(
@@ -763,9 +741,8 @@ def test_update_sla_settings_persists_and_is_audited(client, engine):
 
 
 def test_update_sla_settings_rejects_non_positive_values(client, engine):
-    _, secret = _make_admin(engine)
-    code = pyotp.TOTP(secret).now()
-    _login(client, "admin", ADMIN_PASSWORD, code)
+    _make_admin(engine)
+    _login(client, "admin", ADMIN_PASSWORD)
     csrf = _csrf_token(client)
     resp = client.post(
         "/settings/sla", data={"kev": "0", "cvss_9": "5", "cvss_7": "20", "cvss_4": "70", "default": "100", "csrf_token": csrf},
@@ -774,9 +751,8 @@ def test_update_sla_settings_rejects_non_positive_values(client, engine):
 
 
 def test_update_notification_settings_persists_recipients_and_is_audited(client, engine):
-    _, secret = _make_admin(engine)
-    code = pyotp.TOTP(secret).now()
-    _login(client, "admin", ADMIN_PASSWORD, code)
+    _make_admin(engine)
+    _login(client, "admin", ADMIN_PASSWORD)
     csrf = _csrf_token(client)
 
     resp = client.post(
@@ -796,7 +772,7 @@ def test_update_notification_settings_persists_recipients_and_is_audited(client,
 def test_findings_list_shows_overdue_sla_badge_with_custom_settings(client, engine):
     """Kritik senaryo: SLA 1 gune ayarlanmis + bulgu 10 gun once gorulmus
     -> 'gecikmis' rozeti gorunmeli (master_prompt.md 6 A8 'gecikenler listesi')."""
-    admin_id, secret = _make_admin(engine)
+    admin_id = _make_admin(engine)
     from sqlalchemy.orm import sessionmaker
 
     Session = sessionmaker(bind=engine, future=True)
@@ -819,8 +795,7 @@ def test_findings_list_shows_overdue_sla_badge_with_custom_settings(client, engi
             {"t": dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=10), "i": finding_id},
         )
 
-    code = pyotp.TOTP(secret).now()
-    _login(client, "admin", ADMIN_PASSWORD, code)
+    _login(client, "admin", ADMIN_PASSWORD)
     csrf = _csrf_token(client)
     # SLA'yi KEV disinda herkes icin 1 gune cekiyoruz -- CVSS 9.5 "cvss_9" dilimine girer.
     client.post("/settings/sla", data={"kev": "1", "cvss_9": "1", "cvss_7": "14", "cvss_4": "60", "default": "90", "csrf_token": csrf})
@@ -836,7 +811,7 @@ def test_findings_list_shows_overdue_sla_badge_with_custom_settings(client, engi
 # --- Stage 4 part 4: A5 sahip yonlendirme (CSV import) ----------------------
 
 def test_owners_csv_import_maps_known_repo_and_flags_unknown(client, engine):
-    _, secret = _make_admin(engine)
+    _make_admin(engine)
     from sqlalchemy.orm import sessionmaker
 
     Session = sessionmaker(bind=engine, future=True)
@@ -844,8 +819,7 @@ def test_owners_csv_import_maps_known_repo_and_flags_unknown(client, engine):
         session.add(Repository(github_repo_id=50, full_name="acme/owned-repo", owner="acme", name="owned-repo", default_branch="main", visibility="private"))
         session.commit()
 
-    code = pyotp.TOTP(secret).now()
-    _login(client, "admin", ADMIN_PASSWORD, code)
+    _login(client, "admin", ADMIN_PASSWORD)
     csrf = _csrf_token(client)
 
     csv_content = b"acme/owned-repo,team-platform\nacme/does-not-exist,team-ghost\n"
@@ -862,7 +836,7 @@ def test_owners_csv_import_maps_known_repo_and_flags_unknown(client, engine):
 
 
 def test_owners_csv_reimport_is_idempotent_no_duplicate_rows(client, engine):
-    _, secret = _make_admin(engine)
+    _make_admin(engine)
     from sqlalchemy.orm import sessionmaker
 
     Session = sessionmaker(bind=engine, future=True)
@@ -870,8 +844,7 @@ def test_owners_csv_reimport_is_idempotent_no_duplicate_rows(client, engine):
         session.add(Repository(github_repo_id=51, full_name="acme/dup-check", owner="acme", name="dup-check", default_branch="main", visibility="private"))
         session.commit()
 
-    code = pyotp.TOTP(secret).now()
-    _login(client, "admin", ADMIN_PASSWORD, code)
+    _login(client, "admin", ADMIN_PASSWORD)
     csrf = _csrf_token(client)
     csv_content = b"acme/dup-check,team-platform\n"
 
@@ -888,7 +861,7 @@ def test_coverage_shows_unowned_repo_until_owner_imported(client, engine):
     """NOT: repo icin basarili bir extraction ScanRun'i de eklenir --
     aksi halde repo ayrica 'hic taranmamis' bolumunde de gorunur ve test
     sadece 'sahipsiz' sinyalini izole edemez."""
-    _, secret = _make_admin(engine)
+    _make_admin(engine)
     from sqlalchemy.orm import sessionmaker
 
     Session = sessionmaker(bind=engine, future=True)
@@ -900,8 +873,7 @@ def test_coverage_shows_unowned_repo_until_owner_imported(client, engine):
         ))
         session.commit()
 
-    code = pyotp.TOTP(secret).now()
-    _login(client, "admin", ADMIN_PASSWORD, code)
+    _login(client, "admin", ADMIN_PASSWORD)
     csrf = _csrf_token(client)
 
     resp = client.get("/coverage")
@@ -916,7 +888,7 @@ def test_coverage_shows_unowned_repo_until_owner_imported(client, engine):
 
 
 def test_blast_radius_shows_owner_column(client, engine):
-    _, secret = _make_admin(engine)
+    _make_admin(engine)
     from sqlalchemy.orm import sessionmaker
 
     Session = sessionmaker(bind=engine, future=True)
@@ -929,8 +901,7 @@ def test_blast_radius_shows_owner_column(client, engine):
         ))
         session.commit()
 
-    code = pyotp.TOTP(secret).now()
-    _login(client, "admin", ADMIN_PASSWORD, code)
+    _login(client, "admin", ADMIN_PASSWORD)
     csrf = _csrf_token(client)
     client.post(
         "/owners/import", files={"file": ("owners.csv", b"acme/owner-blast,team-platform\n", "text/csv")},
@@ -948,7 +919,7 @@ def test_dashboard_first_visit_shows_no_new_badge_and_sets_last_visit(client, en
     """Ilk ziyarette (last_dashboard_visit_at NULL) hicbir bulgu 'YENI'
     rozeti ALMAMALI -- aksi halde tum gecmis bulgular yanlislikla yeni
     gorunur (master_prompt.md 6 A6)."""
-    admin_id, secret = _make_admin(engine)
+    admin_id = _make_admin(engine)
     from sqlalchemy.orm import sessionmaker
 
     Session = sessionmaker(bind=engine, future=True)
@@ -961,8 +932,7 @@ def test_dashboard_first_visit_shows_no_new_badge_and_sets_last_visit(client, en
         ))
         session.commit()
 
-    code = pyotp.TOTP(secret).now()
-    _login(client, "admin", ADMIN_PASSWORD, code)
+    _login(client, "admin", ADMIN_PASSWORD)
 
     with engine.begin() as conn:
         before = conn.execute(text("SELECT last_dashboard_visit_at FROM users WHERE id=:i"), {"i": admin_id}).scalar_one()
@@ -979,9 +949,8 @@ def test_dashboard_first_visit_shows_no_new_badge_and_sets_last_visit(client, en
 
 
 def test_dashboard_shows_new_badge_for_finding_created_after_last_visit(client, engine):
-    admin_id, secret = _make_admin(engine)
-    code = pyotp.TOTP(secret).now()
-    _login(client, "admin", ADMIN_PASSWORD, code)
+    admin_id = _make_admin(engine)
+    _login(client, "admin", ADMIN_PASSWORD)
     client.get("/")  # ilk ziyaret -- last_dashboard_visit_at artik set
 
     from sqlalchemy.orm import sessionmaker
@@ -1002,7 +971,7 @@ def test_dashboard_shows_new_badge_for_finding_created_after_last_visit(client, 
 
 
 def test_dashboard_owner_filter_shows_only_owned_repo_findings(client, engine):
-    _, secret = _make_admin(engine)
+    _make_admin(engine)
     from sqlalchemy.orm import sessionmaker
 
     Session = sessionmaker(bind=engine, future=True)
@@ -1019,8 +988,7 @@ def test_dashboard_owner_filter_shows_only_owned_repo_findings(client, engine):
         ])
         session.commit()
 
-    code = pyotp.TOTP(secret).now()
-    _login(client, "admin", ADMIN_PASSWORD, code)
+    _login(client, "admin", ADMIN_PASSWORD)
     csrf = _csrf_token(client)
     client.post(
         "/owners/import", files={"file": ("owners.csv", b"acme/team-a-repo,team-a\nacme/team-b-repo,team-b\n", "text/csv")},
@@ -1035,7 +1003,7 @@ def test_dashboard_owner_filter_shows_only_owned_repo_findings(client, engine):
 # --- Stage 4 part 6: A3/A10 tarama dahil/haric politikasi + viewer tetikleme ---
 
 def test_admin_excludes_and_reincludes_repo_blocking_trigger_meanwhile(client, engine):
-    admin_id, secret = _make_admin(engine)
+    admin_id = _make_admin(engine)
     from sqlalchemy.orm import sessionmaker
 
     Session = sessionmaker(bind=engine, future=True)
@@ -1043,8 +1011,7 @@ def test_admin_excludes_and_reincludes_repo_blocking_trigger_meanwhile(client, e
         session.add(Repository(github_repo_id=70, full_name="acme/exclude-check", owner="acme", name="exclude-check", default_branch="main", visibility="private"))
         session.commit()
 
-    code = pyotp.TOTP(secret).now()
-    _login(client, "admin", ADMIN_PASSWORD, code)
+    _login(client, "admin", ADMIN_PASSWORD)
     csrf = _csrf_token(client)
 
     no_reason_resp = client.post("/repositories/70/exclude", data={"reason": "", "csrf_token": csrf})
@@ -1071,7 +1038,7 @@ def test_admin_excludes_and_reincludes_repo_blocking_trigger_meanwhile(client, e
 
 def test_viewer_trigger_blocked_by_default_then_allowed_then_rate_limited(client, engine):
     viewer_id = _make_viewer(engine)
-    admin_id, secret = _make_admin(engine)
+    admin_id = _make_admin(engine)
     from sqlalchemy.orm import sessionmaker
 
     Session = sessionmaker(bind=engine, future=True)
@@ -1085,8 +1052,7 @@ def test_viewer_trigger_blocked_by_default_then_allowed_then_rate_limited(client
     assert blocked_resp.status_code == 403
 
     client.post("/logout", data={"csrf_token": csrf})
-    code = pyotp.TOTP(secret).now()
-    _login(client, "admin", ADMIN_PASSWORD, code)
+    _login(client, "admin", ADMIN_PASSWORD)
     admin_csrf = _csrf_token(client)
     client.post(
         "/settings/viewer-trigger", data={"enabled": "true", "max_per_hour": "2", "csrf_token": admin_csrf},
@@ -1104,7 +1070,7 @@ def test_viewer_trigger_blocked_by_default_then_allowed_then_rate_limited(client
 
 
 def test_finding_detail_shows_source_scan_run_lineage(client, engine):
-    _, secret = _make_admin(engine)
+    _make_admin(engine)
     from sqlalchemy.orm import sessionmaker
 
     Session = sessionmaker(bind=engine, future=True)
@@ -1124,8 +1090,7 @@ def test_finding_detail_shows_source_scan_run_lineage(client, engine):
         session.commit()
         finding_id = finding.id
 
-    code = pyotp.TOTP(secret).now()
-    _login(client, "admin", ADMIN_PASSWORD, code)
+    _login(client, "admin", ADMIN_PASSWORD)
     resp = client.get(f"/findings/{finding_id}")
     assert resp.status_code == 200
     assert "immediate_match" in resp.text
