@@ -79,6 +79,27 @@ class Settings(BaseSettings):
     backup_dir: str = "/backups"
     backup_retention_days: int = 14
 
+    # Teams webhook bildirimleri (docs/THREAT_MODEL.md madde 9,
+    # docs/LIMITATIONS.md madde 3: "webhook URL'si DB'de sifreli saklanmali").
+    # URL'nin KENDISI admin panelden (DB, core.models.Setting) girilir --
+    # SMTP host'un aksine burada env'de tutulmaz, cunku kullanici karari
+    # URL'nin panelden kolayca degistirilebilir olmasi. Sadece SIFRELEME
+    # ANAHTARI (Fernet, core/backup_crypto.py ile ayni mekanizma) burada,
+    # Docker secret/dosya yolundan okunur -- DB'ye asla duz metin yazilmaz.
+    teams_encryption_key_path: Optional[str] = None
+
+    # Panelden GitHub token ile repo ekleme (hibrit model, 2026-11-10
+    # kullanici karari). Teams webhook anahtariyla AYNI mekanizma
+    # (Fernet, core/backup_crypto.py), AYRI bir anahtar dosyasi -- admin'in
+    # /repositories sayfasindan girdigi PAT'ler bununla sifrelenir/cozulur.
+    # Bos ise onboarding formu token kaydetmeyi reddeder.
+    repo_token_encryption_key_path: Optional[str] = None
+
+    # Teams/panel baglantilari icin "detaylar icin panele bakin: <url>"
+    # seklinde minimal baglanti eklemek icin (THREAT_MODEL.md 9: "icerik
+    # SADECE minimal -- sayilar + panel linki"). Bos ise link eklenmez.
+    panel_base_url: Optional[str] = None
+
 
 def load_settings() -> Settings:
     return Settings()  # type: ignore[call-arg]  # pydantic-settings env'den doldurur

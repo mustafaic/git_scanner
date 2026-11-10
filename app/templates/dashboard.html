@@ -2,56 +2,80 @@
 {% block title %}Bugün{% endblock %}
 {% block content %}
 <h2>Bugün</h2>
-<div class="stat-grid">
-  <div class="stat"><div class="n">{{ open_findings }}</div><div class="l">Açık SCA bulgusu</div></div>
-  <div class="stat"><div class="n">{{ kev_findings }}</div><div class="l">KEV (aktif sömürülen)</div></div>
-  <div class="stat"><div class="n">{{ needs_review }}</div><div class="l">İnceleme gerektiren</div></div>
-  <div class="stat"><div class="n">{{ open_secrets }}</div><div class="l">Açık secret bulgusu</div></div>
-  <div class="stat"><div class="n">{{ overdue_findings }}</div><div class="l">SLA'sı geçmiş bulgu (<a href="/findings">listeye git</a>)</div></div>
+<div class="stat-grid animate-in">
+  <div class="stat stat-primary"><div class="n">{{ open_findings }}</div><div class="l">Açık SCA bulgusu</div></div>
+  <div class="stat {% if kev_findings > 0 %}stat-alert{% else %}stat-zero{% endif %}" title="KEV = CISA'nın 'Aktif Olarak Sömürülen Zafiyetler' listesi. CVSS'ten farklı olarak teorik değil, gerçekten saldırganlarca kullanılan CVE'leri gösterir. 0 olması iyi bir işarettir.">
+    <div class="n">{{ kev_findings }}</div><div class="l">KEV (aktif sömürülen) ⓘ</div>
+  </div>
+  <div class="stat {% if needs_review > 0 %}stat-alert{% else %}stat-zero{% endif %}"><div class="n">{{ needs_review }}</div><div class="l">İnceleme gerektiren</div></div>
+  <div class="stat {% if open_secrets > 0 %}stat-alert{% else %}stat-zero{% endif %}"><div class="n">{{ open_secrets }}</div><div class="l">Açık secret bulgusu</div></div>
+  <div class="stat {% if overdue_findings > 0 %}stat-alert{% else %}stat-zero{% endif %}"><div class="n">{{ overdue_findings }}</div><div class="l">SLA'sı geçmiş bulgu (<a href="/findings">listeye git</a>)</div></div>
   <div class="stat"><div class="n">{{ active_repos }}</div><div class="l">Aktif repo</div></div>
-  <div class="stat"><div class="n">{{ pending_jobs }}</div><div class="l">Bekleyen iş</div></div>
 </div>
+
+{% if open_findings > 0 %}
+<div class="card">
+  <h3>Açık bulguların şiddet dağılımı</h3>
+  <div class="sev-bar">
+    {% if severity_pct.critical %}<span class="seg-critical" style="width:{{ severity_pct.critical }}%"></span>{% endif %}
+    {% if severity_pct.high %}<span class="seg-high" style="width:{{ severity_pct.high }}%"></span>{% endif %}
+    {% if severity_pct.medium %}<span class="seg-medium" style="width:{{ severity_pct.medium }}%"></span>{% endif %}
+    {% if severity_pct.low %}<span class="seg-low" style="width:{{ severity_pct.low }}%"></span>{% endif %}
+    {% if severity_pct.none %}<span class="seg-none" style="width:{{ severity_pct.none }}%"></span>{% endif %}
+  </div>
+  <div class="sev-legend">
+    <span><span class="dot" style="background:var(--sev-critical-solid)"></span>Critical ({{ severity_buckets.critical }})</span>
+    <span><span class="dot" style="background:var(--sev-high-solid)"></span>High ({{ severity_buckets.high }})</span>
+    <span><span class="dot" style="background:var(--sev-medium-solid)"></span>Medium ({{ severity_buckets.medium }})</span>
+    <span><span class="dot" style="background:var(--sev-low-solid)"></span>Low ({{ severity_buckets.low }})</span>
+    {% if severity_buckets.none %}<span><span class="dot" style="background:var(--sev-none-solid)"></span>Skor yok ({{ severity_buckets.none }})</span>{% endif %}
+  </div>
+</div>
+{% endif %}
 
 <div class="card">
   <h3>Bugün yapılacaklar</h3>
-  <form method="get" action="/" style="margin-bottom:0.75rem;">
+  <form method="get" action="/" class="filter-bar">
     <label for="owner">Sahip/ekip filtresi</label>
-    <select name="owner" id="owner" onchange="this.form.submit()" style="max-width:220px;">
+    <select name="owner" id="owner" class="auto-submit">
       <option value="" {% if not owner_filter %}selected{% endif %}>Tümü</option>
       {% for o in all_owners %}
       <option value="{{ o }}" {% if owner_filter == o %}selected{% endif %}>{{ o }}</option>
       {% endfor %}
     </select>
   </form>
+  <div class="table-wrap">
   <table>
-    <thead><tr><th></th><th>Repo</th><th>Paket</th><th>Zafiyet</th><th>CVSS</th><th>KEV</th><th>Durum</th></tr></thead>
+    <thead><tr><th class="col-num">#</th><th></th><th>Repo</th><th>Paket</th><th>Zafiyet</th><th>CVSS</th><th>KEV</th><th>Durum</th></tr></thead>
     <tbody>
       {% for f in action_findings %}
-      <tr>
+      <tr class="row-link" data-href="/findings/{{ f.id }}">
+        <td class="col-num">{{ loop.index }}</td>
         <td>{% if f.id in new_ids %}<span class="badge badge-OPEN">YENİ</span>{% endif %}</td>
         <td>{{ action_repo_names.get(f.repo_id, f.repo_id) }}</td>
-        <td><a href="/findings/{{ f.id }}">{{ f.package_name }} {{ f.version }}</a></td>
+        <td><a class="row-link-target" href="/findings/{{ f.id }}">{{ f.package_name }} {{ f.version }}</a></td>
         <td>{{ f.canonical_vulnerability_id | cve_id(f.aliases) }}</td>
-        <td>{{ f.severity_cvss_score if f.severity_cvss_score is not none else "-" }}</td>
-        <td>{% if f.kev %}⚠️{% endif %}</td>
+        <td>{{ f.severity_cvss_score | severity_badge }}</td>
+        <td>{% if f.kev %}<span class="badge sev-critical" title="CISA KEV: aktif olarak sömürülüyor">⚠️ KEV</span>{% endif %}</td>
         <td><span class="badge badge-{{ f.lifecycle_status }}">{{ f.lifecycle_status }}</span></td>
       </tr>
       {% else %}
-      <tr><td colspan="7">Bugün için aksiyon gereken bir şey yok.</td></tr>
+      <tr><td colspan="8">Bugün için aksiyon gereken bir şey yok.</td></tr>
       {% endfor %}
     </tbody>
   </table>
+  </div>
 </div>
 
 <div class="card">
   <h3>Sistem sağlığı (heartbeat)</h3>
   <table>
-    <thead><tr><th>Bileşen</th><th>Son başarıdan geçen süre</th></tr></thead>
+    <thead><tr><th class="col-num">#</th><th>Bileşen</th><th>Son başarıdan geçen süre</th></tr></thead>
     <tbody>
       {% for h in heartbeat_rows %}
-      <tr><td>{{ h.component }}</td><td>{{ h.age_seconds }} sn</td></tr>
+      <tr><td class="col-num">{{ loop.index }}</td><td>{{ h.component }}</td><td>{{ h.age_seconds }} sn</td></tr>
       {% else %}
-      <tr><td colspan="2">Henüz heartbeat kaydı yok.</td></tr>
+      <tr><td colspan="3">Henüz heartbeat kaydı yok.</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -60,15 +84,15 @@
 <div class="card">
   <h3>Advisory DB tazeliği</h3>
   <table>
-    <thead><tr><th>Kaynak</th><th>Son başarılı senkrondan geçen süre</th></tr></thead>
+    <thead><tr><th class="col-num">#</th><th>Kaynak</th><th>Son başarılı senkrondan geçen süre</th></tr></thead>
     <tbody>
       {% for m in mirror_sync_rows %}
-      <tr><td>{{ m.source }}</td><td>{{ m.age_seconds }} sn</td></tr>
+      <tr><td class="col-num">{{ loop.index }}</td><td>{{ m.source }}</td><td>{{ m.age_seconds }} sn</td></tr>
       {% else %}
-      <tr><td colspan="2">Henüz senkron kaydı yok.</td></tr>
+      <tr><td colspan="3">Henüz senkron kaydı yok.</td></tr>
       {% endfor %}
     </tbody>
   </table>
-  <p style="color:#666; font-size:0.8rem;">Taze olmayan advisory DB hiçbir bulguyu RESOLVED yapamaz (master_prompt.md 4.6).</p>
+  <p class="hint">Taze olmayan advisory DB hiçbir bulguyu RESOLVED yapamaz.</p>
 </div>
 {% endblock %}

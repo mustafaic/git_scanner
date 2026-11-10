@@ -1,31 +1,41 @@
 {% extends "base.html" %}
 {% block title %}SCA Bulguları{% endblock %}
 {% block content %}
-<h2>SCA Bulguları</h2>
-<form method="get" action="/findings" style="margin-bottom:1rem;">
+<div class="page-header">
+  <h2>SCA Bulguları</h2>
+  <div class="page-actions">
+    <a class="btn" href="/findings/export.csv?status={{ status_filter }}">CSV indir</a>
+    <a class="btn" href="/findings/export.json?status={{ status_filter }}">JSON indir</a>
+  </div>
+</div>
+<form method="get" action="/findings" class="filter-bar">
   <label for="status">Durum filtresi</label>
-  <select name="status" id="status" onchange="this.form.submit()" style="max-width:220px;">
+  <select name="status" id="status" class="auto-submit">
     <option value="" {% if not status_filter %}selected{% endif %}>Açık/Aktif (varsayılan)</option>
     {% for s in allowed_statuses %}
     <option value="{{ s }}" {% if status_filter == s %}selected{% endif %}>{{ s }}</option>
     {% endfor %}
   </select>
 </form>
-<p><a href="/findings/export.csv?status={{ status_filter }}">CSV indir</a> · <a href="/findings/export.json?status={{ status_filter }}">JSON indir</a></p>
+<div class="table-wrap">
 <table>
   <thead>
-    <tr><th>Repo</th><th>Paket</th><th>Sürüm</th><th>Zafiyet</th><th>CVSS</th><th>KEV</th><th>Fix</th><th>Durum</th><th>SLA</th></tr>
+    <tr><th class="col-num">#</th><th>Repo</th><th>Paket</th><th>Sürüm</th><th>Zafiyet</th><th>CVSS</th><th>Risk</th><th>Fix</th><th>Durum</th><th>SLA</th></tr>
   </thead>
   <tbody>
     {% for f in findings %}
-    <tr>
-      <td><a href="/findings/{{ f.id }}">{{ repo_names.get(f.repo_id, f.repo_id) }}</a></td>
+    <tr class="row-link" data-href="/findings/{{ f.id }}">
+      <td class="col-num">{{ loop.index }}</td>
+      <td><a class="row-link-target" href="/findings/{{ f.id }}">{{ repo_names.get(f.repo_id, f.repo_id) }}</a></td>
       <td>{{ f.package_name }}</td>
       <td>{{ f.version }}</td>
-      <td><a href="/findings/{{ f.id }}">{{ f.canonical_vulnerability_id | cve_id(f.aliases) }}</a></td>
-      <td>{{ f.severity_cvss_score if f.severity_cvss_score is not none else "-" }}</td>
-      <td>{% if f.kev %}⚠️ KEV{% endif %}</td>
-      <td>{{ f.fix_status }}</td>
+      <td>{{ f.canonical_vulnerability_id | cve_id(f.aliases) }}</td>
+      <td>{{ f.severity_cvss_score | severity_badge }}</td>
+      <td>
+        {% if f.kev %}<span class="badge sev-critical" title="CISA KEV: aktif olarak sömürülüyor">⚠️ KEV</span>{% endif %}
+        {{ f.epss_score | epss_badge }}
+      </td>
+      <td>{{ f.fix_status | fix_status_label(f.fix_version) }}</td>
       <td><span class="badge badge-{{ f.lifecycle_status }}">{{ f.lifecycle_status }}</span></td>
       <td>
         {% set sla = sla_by_id.get(f.id) %}
@@ -36,8 +46,9 @@
       </td>
     </tr>
     {% else %}
-    <tr><td colspan="9">Bu filtreye uyan bulgu yok.</td></tr>
+    <tr><td colspan="10">Bu filtreye uyan bulgu yok.</td></tr>
     {% endfor %}
   </tbody>
 </table>
+</div>
 {% endblock %}

@@ -29,7 +29,10 @@ from core.notifications import (
     CHANNEL_EMAIL,
     EVENT_NEW_SECRET_FINDING,
     SmtpSettings,
+    TeamsSettings,
+    build_minimal_teams_text,
     record_and_maybe_send,
+    record_and_maybe_send_teams,
     should_notify_new_secret,
 )
 from core.secret_finding_model import ingest_secret_findings
@@ -158,21 +161,31 @@ def _latest_successful_secret_scan(session: Session, repo_id: int) -> Optional[S
 
 def _notify_new_secret_findings(
     session: Session, created_findings, smtp_settings: Optional[SmtpSettings], notify_recipients: Optional[List[str]],
+    teams_settings: Optional[TeamsSettings] = None,
 ) -> None:
     """master_prompt.md 6: 'yeni secret ... (baseline degil) -> ANINDA'.
     Ham secret degeri BURADA DA asla kullanilmaz -- sadece kural/dosya/repo
-    bilgisi (SecretFinding'de ham deger hic SUTUN OLARAK yok)."""
-    if not smtp_settings or not notify_recipients:
+    bilgisi (SecretFinding'de ham deger hic SUTUN OLARAK yok). Teams kanali
+    (varsa) daha da az detay gonderir -- bkz. core.notifications.build_minimal_teams_text
+    (docs/THREAT_MODEL.md 9: repo/dosya/kural bilgisi Teams'e ASLA gitmez)."""
+    if not created_findings or (not (smtp_settings and notify_recipients) and not teams_settings):
         return
     for finding in created_findings:
         if not should_notify_new_secret(is_baseline=finding.baseline):
             continue
-        subject = f"[Kritik] Yeni secret bulgusu -- {finding.rule_id}"
-        body = f"Repo ID: {finding.repo_id}\nDosya: {finding.file_path}\nKural: {finding.rule_id}\n"
-        record_and_maybe_send(
-            session, event_type=EVENT_NEW_SECRET_FINDING, dedup_key=f"secret_finding:{finding.id}",
-            channel=CHANNEL_EMAIL, recipients=notify_recipients, subject=subject, body=body, smtp_settings=smtp_settings,
-        )
+        if smtp_settings and notify_recipients:
+            subject = f"[Kritik] Yeni secret bulgusu -- {finding.rule_id}"
+            body = f"Repo ID: {finding.repo_id}\nDosya: {finding.file_path}\nKural: {finding.rule_id}\n"
+            record_and_maybe_send(
+                session, event_type=EVENT_NEW_SECRET_FINDING, dedup_key=f"secret_finding:{finding.id}",
+                channel=CHANNEL_EMAIL, recipients=notify_recipients, subject=subject, body=body, smtp_settings=smtp_settings,
+            )
+        if teams_settings:
+            teams_text = build_minimal_teams_text(EVENT_NEW_SECRET_FINDING)
+            record_and_maybe_send_teams(
+                session, event_type=EVENT_NEW_SECRET_FINDING, dedup_key=f"secret_finding:{finding.id}",
+                title=teams_text["title"], text=teams_text["text"], teams_settings=teams_settings,
+            )
 
 
 def scan_repository_secrets(
@@ -185,6 +198,7 @@ def scan_repository_secrets(
     scanner_version: str,
     smtp_settings: Optional[SmtpSettings] = None,
     notify_recipients: Optional[List[str]] = None,
+    teams_settings: Optional[TeamsSettings] = None,
 ) -> ScanRun:
     """Bir repo icin secret taramasini calistirir (mirror fetch + gitleaks +
     ingest). master_prompt.md 4.4: force-push, tam gecmis yeniden yazimi
@@ -247,7 +261,7 @@ def scan_repository_secrets(
     stats, created_findings = ingest_secret_findings(
         session, repo.github_repo_id, scan_run.id, findings, is_baseline=is_baseline, is_full_scan=full_rescan
     )
-    _notify_new_secret_findings(session, created_findings, smtp_settings, notify_recipients)
+    _notify_new_secret_findings(session, created_findings, smtp_settings, notify_recipients, teams_settings)
     scan_run.details = {**scan_run.details, **stats}
     repo.last_scanned_sha = new_head_sha
     scan_run.finished_at = dt.datetime.now(dt.timezone.utc)

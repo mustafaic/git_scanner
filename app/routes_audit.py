@@ -26,6 +26,8 @@ def audit_log(request: Request, page: int = 1, db: DbSession = Depends(get_db), 
     ).scalars().all()
     return render_page(
         request, "audit_log.html",
-        {"entries": entries, "page": page, "has_more": len(entries) == PAGE_SIZE},
+        # page_size: sira numarasi sayfalar arasinda SURER (2. sayfa 101'den
+        # baslar) -- her sayfada 1'den baslamak kayitlari saymayi zorlastirirdi.
+        {"entries": entries, "page": page, "page_size": PAGE_SIZE, "has_more": len(entries) == PAGE_SIZE},
         user=user,
     )

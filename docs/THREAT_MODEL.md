@@ -27,17 +27,24 @@ hedefleyen paket adı).
 **Kontroller:**
 - Worker **hiçbir repo kodu çalıştırmaz** — sadece statik parse/scan
   (`worker/main.py`, `adapters/osv_scanner.py`, `adapters/gitleaks.py`).
-- Paket adı/sürüm **komut ipucu** olarak gösterilmeden önce ekosistem
-  grameri ile doğrulanır; eşleşmezse ipucu HİÇ üretilmez
-  (`core/lockfile_parser.py::build_install_hint`, `is_safe_package_name`).
+- Panel **hiçbir yerde kopyala-yapıştır kurulum komutu üretmez**
+  (2026-11-11, kullanıcı kararı): komut ipucu gösteren tek yer olan A1
+  Aksiyon Grupları sayfası ve onu besleyen `build_install_hint` /
+  `is_safe_package_name` / `is_safe_version_string` fonksiyonları
+  `core/lockfile_parser.py`'den tamamen kaldırıldı. Böylece "paket adı
+  (`lodash; rm -rf /`) kullanıcının terminaline sızar" saldırı sınıfı
+  ortadan kalktı — artık doğrulanacak bir komut üretimi yok.
 - Jinja2 otomatik HTML escape (varsayılan, `|safe` kullanılmıyor) — XSS
   payload'lı paket adı HTML'de düz metin olarak görünür.
 - Parametreli SQL (SQLAlchemy ORM/Core, hiçbir yerde string-interpolasyonlu
   SQL yok).
 
-**Kalan risk:** Ekosistem grameri validasyonu HER ekosistem için eksiksiz
-test edilmedi (sadece 8 ekosistem için regex yazıldı, gerçek dünyadaki tüm
-edge-case'ler kapsanmamış olabilir) — bkz. LIMITATIONS.md.
+**Kalan risk:** Paket adı/sürüm hâlâ panelde METİN olarak gösterilir (bulgu
+listeleri, detay sayfası) — buradaki savunma tek başına Jinja2 escape'idir.
+Kullanıcı bu metni kendi isteğiyle kopyalayıp bir terminale yapıştırırsa
+sistemin uyarabileceği bir nokta yok; eskiden bu senaryo için ekosistem
+grameri doğrulaması vardı, komut ipucu özelliği kaldırıldığı için bu
+doğrulama katmanı da kaldırıldı.
 
 ### 2. Symlink / zip-bomb tuzakları
 
@@ -165,10 +172,23 @@ kapsamda tutulması operasyonel bir sorumluluktur.
 
 ### 9. Bulut bildirim kanalları (Teams)
 
-Henüz uygulanmadı (LIMITATIONS.md madde 3) — bu nedenle şu an sıfır risk.
-Uygulanırsa: webhook URL'si DB'de şifreli saklanmalı, içerik SADECE
-`minimal` (sayılar + panel linki), repo/paket/CVE/secret detayı asla
-çıkmamalı (master_prompt.md 5).
+Uygulandı (2026-11-09, LIMITATIONS.md madde 3). Webhook URL'si admin
+panelden (`/settings`) girilir, Fernet ile şifrelenip DB'de saklanır
+(`TEAMS_ENCRYPTION_KEY_PATH` — SMTP host'un aksine env'de değil, kullanıcı
+kararı: panelden kolayca değiştirilebilir olmalı). İçerik HER ZAMAN minimal
+(sayılar + panel linki) — `core.notifications.build_minimal_teams_text`
+finding/secret nesnesini parametre olarak bile almaz, bu yüzden
+repo/paket/CVE/secret detayının yanlışlıkla sızması yapısal olarak
+engellenir (bkz. `tests/unit/test_notifications.py`).
+
+**SSRF kontrolü:** sunucu admin'in girdiği URL'ye POST atar (admin zaten
+güvenilir bir rol, ama webhook URL'si host-allowlist'e tabi: sadece
+`*.webhook.office.com`/`*.logic.azure.com` kabul edilir — ele geçirilmiş
+bir admin hesabının sunucuyu iç ağa yönlendirmesi bu şekilde zorlaştırılır).
+
+**Kalan risk:** webhook URL'si doğrulanırken (host allowlist dışında)
+gerçek bir SSRF testi/pentest yapılmadı — sadece statik host-suffix
+kontrolü var, DNS rebinding gibi daha ileri senaryolar kapsam dışı.
 
 ### 10. Ele geçirilmiş admin hesabı
 
@@ -186,6 +206,44 @@ ama engellemez. Parola politikası (min 12 karakter, 3 sınıf) tek savunma
 katmanıdır. **Admin sayısını az tutmak ve güçlü/benzersiz parolalar
 kullanmak artık daha kritik.**
 
+### 11. Panelden PAT ile repo ekleme (hibrit model, 2026-11-10 kullanici karari)
+
+GitHub App org-wide kurulumuna ek olarak admin panelden tek bir repo icin
+fine-grained bir Personal Access Token (PAT) girip ekleyebilir
+(`app/routes_repos.py` "+ Proje Ekle", `core.models.RepoOnboardingRequest`/
+`RepoCredential`). Bu, App'in GORMEDIGI bir repoya erisim icin yeni bir
+secret sinifi ekler -- her biri App private key'inden daha DUSUK yetkili
+(tek repo, admin'in GitHub'da sectigi izinler) ama panelden girildigi icin
+ayri bir tehdit yuzeyi.
+
+**Kontroller:**
+- `app` servisi token'i GitHub'a karsi HIC kullanmaz, SADECE Fernet ile
+  sifreleyip DB'ye yazar (`core/backup_crypto.py`, Teams webhook ile AYNI
+  mekanizma, AYRI bir anahtar: `REPO_TOKEN_ENCRYPTION_KEY_PATH`) -- token'i
+  gercekten kullanan taraf HER ZAMAN orchestrator'dir (App private key'iyle
+  AYNI ayrim ilkesi: GitHub'a cikan tek servis orchestrator).
+- Token DEGERI hicbir zaman log'a/audit_log'a yazilmaz -- SADECE hangi
+  owner/repo icin istek yapildigi audit'lenir (`repo_onboarding_requested`).
+- SADECE admin bu formu gorebilir/kullanabilir (`require_admin`).
+- Token'in GitHub'a karsi gecerliligi/izni SADECE orchestrator'in
+  `GET /repos/{owner}/{repo}` cagrisiyla dogrulanir -- gecersiz/yetkisiz bir
+  token hic bir `repositories` satiri OLUSTURMAZ, sadece anlasilir bir hata
+  mesaji (`repo_onboarding_requests.error_message`) yazar.
+- Token kaldirildiginda (`POST /repositories/{id}/remove-credential`) repo
+  otomatik tarama disi (`scan_excluded`) birakilir -- yetkisiz bir token
+  sessizce eski (potansiyel olarak yanlis) sonuclar URETMEZ.
+
+**Kalan risk:** Admin'in girdigi PAT'in GERCEKTEN minimum izinli (sadece
+Contents/Metadata Read-only) olup olmadigi sunucu tarafinda DOGRULANMAZ --
+sadece UI'da bir oneri/hint var (kural: "admin zaten guvenilir bir rol",
+Teams webhook SSRF kontrolundeki host-allowlist gibi ek bir teknik kisit
+BURADA YOK, cunku hedef sabit `api.github.com`/GHES, admin'in sectigi
+degiskenlik GitHub'in kendi yetkilendirme ekraninda kalir). Ayrica TUM
+manuel PAT'ler AYNI `REPO_TOKEN_ENCRYPTION_KEY_PATH` anahtariyla sifrelenir
+-- bu anahtar sizarsa (Docker secret dosyasina erisim) TUM manuel repo
+token'lari tek seferde cozulebilir hale gelir (App private key'inin
+tekilligiyle AYNI risk sinifi, bkz. madde 3).
+
 ## Özet tablo
 
 | Tehdit | Risk seviyesi (kontrollerden sonra) |
@@ -199,3 +257,4 @@ kullanmak artık daha kritik.**
 | İçeriden kullanıcı (admin) | Orta (tek faktör, ama audit'li + rate-limit) |
 | Zehirlenmiş mirror | Düşük (checksum + tazelik kontrolü) |
 | Egress/veri sızdırma | Düşük (bkz. EGRESS_REPORT.md) |
+| Panelden PAT ile repo ekleme | Düşük-Orta (şifreli, tek kullanım alanı orchestrator, ama izin kapsamı sunucu tarafında doğrulanmaz) |

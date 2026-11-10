@@ -6,44 +6,73 @@
 
 <div class="card">
   <h3>SLA hedef süreleri (gün)</h3>
-  <p style="color:#666; font-size:0.85rem;">Şirket politikası -- bulgunun ilk görüldüğü günden itibaren kaç gün içinde kapatılması hedeflendiği. Hiçbir bulguyu otomatik kapatmaz, sadece gecikme göstergesi/sıralama içindir.</p>
+  <p class="hint">Şirket politikası -- bulgunun ilk görüldüğü günden itibaren kaç gün içinde kapatılması hedeflendiği. Hiçbir bulguyu otomatik kapatmaz, sadece gecikme göstergesi/sıralama içindir.</p>
   <form method="post" action="/settings/sla">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label for="kev">KEV'de olan (aktif sömürülen)</label>
-    <input type="number" id="kev" name="kev" min="1" value="{{ sla_days.kev }}" style="max-width:120px;">
+    <input class="input-sm" type="number" id="kev" name="kev" min="1" value="{{ sla_days.kev }}">
     <label for="cvss_9">CVSS ≥ 9</label>
-    <input type="number" id="cvss_9" name="cvss_9" min="1" value="{{ sla_days.cvss_9 }}" style="max-width:120px;">
+    <input class="input-sm" type="number" id="cvss_9" name="cvss_9" min="1" value="{{ sla_days.cvss_9 }}">
     <label for="cvss_7">CVSS ≥ 7</label>
-    <input type="number" id="cvss_7" name="cvss_7" min="1" value="{{ sla_days.cvss_7 }}" style="max-width:120px;">
+    <input class="input-sm" type="number" id="cvss_7" name="cvss_7" min="1" value="{{ sla_days.cvss_7 }}">
     <label for="cvss_4">CVSS ≥ 4</label>
-    <input type="number" id="cvss_4" name="cvss_4" min="1" value="{{ sla_days.cvss_4 }}" style="max-width:120px;">
+    <input class="input-sm" type="number" id="cvss_4" name="cvss_4" min="1" value="{{ sla_days.cvss_4 }}">
     <label for="default">Diğerleri (skor yok/düşük)</label>
-    <input type="number" id="default" name="default" min="1" value="{{ sla_days.default }}" style="max-width:120px;">
+    <input class="input-sm" type="number" id="default" name="default" min="1" value="{{ sla_days.default }}">
     <p><button class="btn btn-primary" type="submit">SLA'yı kaydet</button></p>
   </form>
 </div>
 
 <div class="card">
   <h3>İç e-posta bildirimleri</h3>
-  <p style="color:#666; font-size:0.85rem;">Varsayılan KAPALI (master_prompt.md 5: "kanallar admin tarafından açılıp kapatılır, varsayılan kapalı"). SMTP sunucu adresi/kimlik bilgisi sunucu config'inde (env) kalır, burada SADECE açık/kapalı ve alıcı listesi var.</p>
+  <p class="hint">Varsayılan KAPALI (master_prompt.md 5: "kanallar admin tarafından açılıp kapatılır, varsayılan kapalı"). SMTP sunucu adresi/kimlik bilgisi sunucu config'inde (env) kalır, burada SADECE açık/kapalı ve alıcı listesi var.</p>
   <form method="post" action="/settings/notifications">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <label><input type="checkbox" name="email_enabled" value="true" {% if notifications.email_enabled %}checked{% endif %}> E-posta bildirimlerini etkinleştir</label>
+    <label class="checkbox-row"><input type="checkbox" name="email_enabled" value="true" {% if notifications.email_enabled %}checked{% endif %}> E-posta bildirimlerini etkinleştir</label>
     <label for="recipients">Alıcılar (virgül veya satır ile ayrılmış)</label>
-    <textarea id="recipients" name="recipients" rows="3" style="width:100%; max-width:480px;">{{ notifications.recipients | join(", ") }}</textarea>
+    <textarea class="input-md" id="recipients" name="recipients" rows="3">{{ notifications.recipients | join(", ") }}</textarea>
     <p><button class="btn btn-primary" type="submit">Bildirim ayarlarını kaydet</button></p>
   </form>
-  <p style="color:#666; font-size:0.8rem;">Teams webhook entegrasyonu henüz eklenmedi (bkz. docs/ASSUMPTIONS.md) -- sadece iç SMTP destekleniyor.</p>
+  <p class="hint">Teams webhook entegrasyonu için aşağıdaki "Microsoft Teams bildirimleri" kartına bakın.</p>
+</div>
+
+<div class="card">
+  <h3>Microsoft Teams bildirimleri</h3>
+  <p class="hint">Teams kanalınızda bir "Incoming Webhook" bağlayıcısı oluşturup URL'sini buraya yapıştırın. Webhook URL'si sunucuda şifreli saklanır, kaydedildikten sonra bir daha ekranda gösterilmez. Mesaj içeriği her zaman minimaldir (sayılar + panel linki) -- repo/paket/CVE/secret detayı Teams'e asla gönderilmez.</p>
+  {% if not teams_crypto_ready %}
+  <div class="flash flash-error">Sunucuda TEAMS_ENCRYPTION_KEY_PATH yapılandırılmamış -- webhook URL'si kaydedilemez. Bkz. RUNBOOK.md / deploy/secrets/README.md.</div>
+  {% endif %}
+  <form method="post" action="/settings/teams">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label class="checkbox-row"><input type="checkbox" name="enabled" value="true" {% if teams.enabled %}checked{% endif %}> Teams bildirimlerini etkinleştir</label>
+    <label for="webhook_url">Webhook URL
+      {% if teams.webhook_configured %}<span class="badge badge-RESOLVED">yapılandırıldı</span>{% else %}<span class="badge badge-ACCEPTED_RISK">yapılandırılmadı</span>{% endif %}
+    </label>
+    <input type="password" id="webhook_url" name="webhook_url" placeholder="{% if teams.webhook_configured %}değiştirmek için yeni URL yapıştırın (boş bırakılırsa mevcut URL korunur){% else %}https://...webhook.office.com/...{% endif %}" autocomplete="off">
+    <label>Hangi olaylarda bildirim gönderilsin</label>
+    <div class="checkbox-list">
+      <label class="checkbox-row"><input type="checkbox" name="event_critical_sca" value="true" {% if teams.events.critical_sca_finding %}checked{% endif %}> Kritik SCA bulgusu (KEV veya CVSS ≥ 9)</label>
+      <label class="checkbox-row"><input type="checkbox" name="event_new_secret" value="true" {% if teams.events.new_secret_finding %}checked{% endif %}> Yeni secret bulgusu</label>
+      <label class="checkbox-row"><input type="checkbox" name="event_daily_digest" value="true" {% if teams.events.daily_digest %}checked{% endif %}> Günlük özet</label>
+    </div>
+    <p><button class="btn btn-primary" type="submit">Teams ayarlarını kaydet</button></p>
+  </form>
+  {% if teams.webhook_configured %}
+  <form method="post" action="/settings/teams/test" class="inline">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button class="btn" type="submit">Test mesajı gönder</button>
+  </form>
+  {% endif %}
 </div>
 
 <div class="card">
   <h3>Viewer'a elle tetikleme izni</h3>
-  <p style="color:#666; font-size:0.85rem;">Varsayılan KAPALI (master_prompt.md 6 A10). Açılırsa viewer kullanıcılar da "Şimdi kontrol et" butonunu kullanabilir, saatlik limitle sınırlıdır.</p>
+  <p class="hint">Varsayılan KAPALI (master_prompt.md 6 A10). Açılırsa viewer kullanıcılar da "Şimdi kontrol et" butonunu kullanabilir, saatlik limitle sınırlıdır.</p>
   <form method="post" action="/settings/viewer-trigger">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <label><input type="checkbox" name="enabled" value="true" {% if viewer_trigger.enabled %}checked{% endif %}> Viewer'a elle tetikleme izni ver</label>
+    <label class="checkbox-row"><input type="checkbox" name="enabled" value="true" {% if viewer_trigger.enabled %}checked{% endif %}> Viewer'a elle tetikleme izni ver</label>
     <label for="max_per_hour">Saatlik limit (kullanıcı başına)</label>
-    <input type="number" id="max_per_hour" name="max_per_hour" min="1" value="{{ viewer_trigger.max_per_hour }}" style="max-width:120px;">
+    <input class="input-sm" type="number" id="max_per_hour" name="max_per_hour" min="1" value="{{ viewer_trigger.max_per_hour }}">
     <p><button class="btn btn-primary" type="submit">Kaydet</button></p>
   </form>
 </div>

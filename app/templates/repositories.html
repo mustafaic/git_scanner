@@ -2,55 +2,161 @@
 {% block title %}Repolar{% endblock %}
 {% block content %}
 <h2>Repolar</h2>
+{% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
+
+{% if user.role == "admin" %}
+<div class="card">
+  <h3>+ Proje Ekle</h3>
+  <p class="hint">GitHub App'in kurulu olduğu organizasyon dışında tek bir repoyu hızlıca eklemek için kullanın. Fine-grained bir Personal Access Token önerilir -- App'imizle aynı minimum izin: <strong>Contents: Read-only, Metadata: Read-only</strong>. Token sunucuda şifreli saklanır, kaydedildikten sonra bir daha ekranda gösterilmez.</p>
+  {% if not repo_token_crypto_ready %}
+  <div class="flash flash-error">Sunucuda REPO_TOKEN_ENCRYPTION_KEY_PATH yapılandırılmamış -- token kaydedilemez. Bkz. deploy/secrets/README.md.</div>
+  {% endif %}
+  <form method="post" action="/repositories/add">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="repo">Repo (owner/repo veya tam GitHub URL'si)</label>
+    <input class="input-md" type="text" id="repo" name="repo" placeholder="octocat/hello-world" required>
+    <label for="token">GitHub token</label>
+    <input class="input-md" type="password" id="token" name="token" placeholder="ghp_... veya github_pat_..." autocomplete="off" required>
+    <p><button class="btn btn-primary" type="submit">Doğrula ve ekle</button></p>
+  </form>
+  <p class="hint">Token'ı GitHub'a karşı doğrulama ve ilk keşif, panelin bir sonraki tarama döngüsünde (orchestrator) yapılır -- aşağıdaki listede "Bekliyor" olarak görünür, bir dakika içinde aktif repo olarak güncellenir ya da anlaşılır bir hata mesajı gösterir.</p>
+</div>
+
+{% if pending_requests %}
+<div class="card">
+  <h3>Bekleyen proje ekleme istekleri</h3>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th class="col-num">#</th><th>Repo</th><th>Durum</th><th>İstenme zamanı</th><th></th></tr></thead>
+    <tbody>
+      {% for req in pending_requests %}
+      <tr>
+        <td class="col-num">{{ loop.index }}</td>
+        <td>{{ req.owner }}/{{ req.repo_name }}</td>
+        <td>
+          {% if req.status == "pending" %}<span class="badge badge-NEEDS_REVIEW">Bekliyor</span>
+          {% else %}<span class="badge badge-OPEN">Hata</span> <span class="hint">{{ req.error_message }}</span>
+          {% endif %}
+        </td>
+        <td>{{ req.created_at | ts }}</td>
+        <td class="cell-actions">
+          <form method="post" action="/repositories/onboarding-requests/{{ req.id }}/dismiss" class="inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="btn" type="submit">Kaldır</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endif %}
+{% endif %}
+
+<div class="table-wrap">
 <table>
   <thead>
-    <tr><th>Repo</th><th>Görünürlük</th><th>Varsayılan dal</th><th>HEAD SHA</th><th>Aktif</th><th>Tarama politikası</th><th>Güncellendi</th><th></th></tr>
+    <tr>
+      <th class="col-num">#</th>
+      <th>Repo</th>
+      <th>Kaynak</th>
+      <th>Görünürlük</th>
+      <th>Varsayılan dal</th>
+      <th>HEAD SHA</th>
+      <th>Tarama durumu</th>
+      <th>Son güncelleme</th>
+      <th></th>
+    </tr>
   </thead>
   <tbody>
     {% for r in repos %}
     <tr>
+      <td class="col-num">{{ loop.index }}</td>
       <td>{{ r.full_name }}</td>
+      <td>
+        {% if r.discovered_via == "manual_pat" %}<span class="badge badge-neutral" title="Panelden GitHub token ile eklendi">Manuel (PAT)</span>
+        {% else %}<span class="badge badge-neutral" title="GitHub App org-wide keşfi">GitHub App</span>{% endif %}
+      </td>
       <td>{{ r.visibility }}</td>
       <td>{{ r.default_branch }}</td>
       <td><code class="secret">{{ (r.last_seen_sha or "-")[:12] }}</code></td>
-      <td>{% if r.is_active %}Evet{% else %}Hayır{% endif %}</td>
       <td>
-        {% if r.scan_excluded %}
-        <span class="badge badge-ACCEPTED_RISK">hariç</span> <span style="font-size:0.75rem; color:#666;">{{ r.scan_exclude_reason }}</span>
-        {% else %}
-        <span class="badge badge-RESOLVED">dahil</span>
-        {% endif %}
+        {# Tarama politikasi + canli tarama durumu AYNI konuya ait -- ayri
+           sutunlara dagitmak yerine tek bir dikey yiginda. #}
+        <div class="cell-stack">
+          {% if not r.is_active %}
+          <span class="badge badge-ACCEPTED_RISK" title="Bu repo GitHub App kurulumunda artık görünmüyor">pasif</span>
+          {% elif r.scan_excluded %}
+          <span class="badge badge-ACCEPTED_RISK">hariç</span>
+          {% else %}
+          <span class="badge badge-RESOLVED">dahil</span>
+          {% endif %}
+          {% if r.scan_excluded and r.scan_exclude_reason %}
+          <span class="hint">{{ r.scan_exclude_reason }}</span>
+          {% endif %}
+          {% set t = trigger_status.get(r.github_repo_id) %}
+          {% if t and not r.scan_excluded %}
+            {% if t.scanning %}<span class="hint">Taranıyor&hellip;</span>
+            {% elif t.queued %}<span class="hint">Kuyrukta, kısa sürede başlayacak</span>
+            {% elif t.last_trigger_at %}<span class="hint">Son kontrol: {{ t.last_trigger_at | ts }}</span>
+            {% endif %}
+          {% endif %}
+        </div>
       </td>
-      <td>{{ r.updated_at }}</td>
-      <td>
-        {% if can_trigger and not r.scan_excluded %}
-        <form method="post" action="/repositories/{{ r.github_repo_id }}/trigger" class="inline">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <button class="btn" type="submit">Şimdi kontrol et</button>
-        </form>
-        {% endif %}
-        {% if user.role == "admin" %}
-        {% if r.scan_excluded %}
-        <form method="post" action="/repositories/{{ r.github_repo_id }}/unexclude" class="inline">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <button class="btn" type="submit">Taramaya dahil et</button>
-        </form>
-        {% else %}
-        <details style="display:inline-block;">
-          <summary class="btn" style="display:inline;">Hariç tut</summary>
-          <form method="post" action="/repositories/{{ r.github_repo_id }}/exclude">
+      <td>{{ r.updated_at | ts }}</td>
+      <td class="cell-actions">
+        <div class="row-actions">
+          {% if can_trigger and not r.scan_excluded %}
+          <form method="post" action="/repositories/{{ r.github_repo_id }}/trigger" class="inline">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <input type="text" name="reason" placeholder="gerekçe (zorunlu)" required>
-            <button class="btn btn-danger" type="submit">Hariç tut</button>
+            <button class="btn" type="submit">Şimdi kontrol et</button>
           </form>
-        </details>
-        {% endif %}
-        {% endif %}
+          {% endif %}
+          {% if user.role == "admin" %}
+          {% if r.scan_excluded %}
+          <form method="post" action="/repositories/{{ r.github_repo_id }}/unexclude" class="inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="btn" type="submit">Taramaya dahil et</button>
+          </form>
+          {% endif %}
+          {# Ikincil/yikici aksiyonlar tek bir menude toplanir -- her satirda
+             yan yana ucu birden durdugunda alan dagiliyordu. #}
+          {% if not r.scan_excluded or r.github_repo_id in manual_repo_ids %}
+          <details class="popover">
+            <summary class="btn-icon" title="Diğer işlemler">&ctdot;</summary>
+            <div class="popover-panel popover-menu">
+              {% if not r.scan_excluded %}
+              <div class="menu-item">
+                <span class="menu-label">Taramadan hariç tut</span>
+                <form method="post" action="/repositories/{{ r.github_repo_id }}/exclude">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <input type="text" name="reason" placeholder="gerekçe (zorunlu)" required>
+                  <p><button class="btn btn-danger" type="submit">Hariç tut</button></p>
+                </form>
+              </div>
+              {% endif %}
+              {% if r.github_repo_id in manual_repo_ids %}
+              <div class="menu-item">
+                <span class="menu-label">Kayıtlı token'ı kaldır</span>
+                <p class="hint">Bu repo panelden eklendi. Token kaldırılırsa taranamaz ve otomatik hariç tutulur.</p>
+                <form method="post" action="/repositories/{{ r.github_repo_id }}/remove-credential">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <button class="btn btn-danger" type="submit">Token'ı kaldır</button>
+                </form>
+              </div>
+              {% endif %}
+            </div>
+          </details>
+          {% endif %}
+          {% endif %}
+        </div>
       </td>
     </tr>
     {% else %}
-    <tr><td colspan="8">Henüz keşfedilmiş repo yok.</td></tr>
+    <tr><td colspan="9">Henüz keşfedilmiş repo yok.</td></tr>
     {% endfor %}
   </tbody>
 </table>
+</div>
 {% endblock %}

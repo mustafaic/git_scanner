@@ -2,31 +2,34 @@
 {% block title %}Blast Radius{% endblock %}
 {% block content %}
 <h2>Blast Radius</h2>
-<p style="color:#666; font-size:0.85rem;">Bir CVE/GHSA/OSV kimliği veya paket adı girin -- etkilenen tüm repolar saniyeler içinde listelenir.</p>
-<form method="get" action="/blast-radius" style="margin-bottom:1rem;">
+<p class="hint">Bir CVE/GHSA/OSV kimliği veya paket adı girin -- etkilenen tüm repolar saniyeler içinde listelenir.</p>
+<form method="get" action="/blast-radius" class="filter-bar">
   <label for="q">CVE / GHSA / OSV ID veya paket adı</label>
-  <input type="text" id="q" name="q" value="{{ q }}" placeholder="örn. lodash veya GHSA-xxxx" style="max-width:320px;">
-  <p><button class="btn btn-primary" type="submit">Ara</button></p>
+  <input type="text" id="q" name="q" value="{{ q }}" placeholder="örn. lodash veya GHSA-xxxx">
+  <button class="btn btn-primary" type="submit">Ara</button>
 </form>
 
 {% if q %}
 <p><strong>{{ affected_repo_count }}</strong> repo etkileniyor, <strong>{{ results | length }}</strong> bulgu eşleşti.</p>
+<div class="table-wrap">
 <table>
-  <thead><tr><th>Repo</th><th>Sahip(ler)</th><th>Paket</th><th>Sürüm</th><th>Zafiyet</th><th>Durum</th></tr></thead>
+  <thead><tr><th class="col-num">#</th><th>Repo</th><th>Sahip(ler)</th><th>Paket</th><th>Sürüm</th><th>Zafiyet</th><th>Durum</th></tr></thead>
   <tbody>
     {% for r in results %}
-    <tr>
+    <tr class="row-link" data-href="/findings/{{ r.finding.id }}">
+      <td class="col-num">{{ loop.index }}</td>
       <td>{{ r.repo_name }}</td>
       <td>{{ r.owners | join(", ") if r.owners else "-" }}</td>
-      <td><a href="/findings/{{ r.finding.id }}">{{ r.finding.package_name }}</a></td>
+      <td><a class="row-link-target" href="/findings/{{ r.finding.id }}">{{ r.finding.package_name }}</a></td>
       <td>{{ r.finding.version }}</td>
       <td>{{ r.finding.canonical_vulnerability_id | cve_id(r.finding.aliases) }}</td>
       <td><span class="badge badge-{{ r.finding.lifecycle_status }}">{{ r.finding.lifecycle_status }}</span></td>
     </tr>
     {% else %}
-    <tr><td colspan="6">Eşleşen bulgu yok.</td></tr>
+    <tr><td colspan="7">Eşleşen bulgu yok.</td></tr>
     {% endfor %}
   </tbody>
 </table>
+</div>
 {% endif %}
 {% endblock %}

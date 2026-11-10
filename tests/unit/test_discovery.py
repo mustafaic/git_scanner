@@ -14,7 +14,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from orchestrator.discovery import list_installation_repositories  # noqa: E402
+from orchestrator.discovery import fetch_repository_by_name, list_installation_repositories  # noqa: E402
 from orchestrator.github_auth import GitHubAppAuth  # noqa: E402
 
 
@@ -81,3 +81,42 @@ def test_non_200_raises_without_leaking_body():
         list_installation_repositories("https://api.github.com", _FakeAuth(), http_client=client)
     assert "secret detail xyz" not in str(excinfo.value)
     assert "403" in str(excinfo.value)
+
+
+# --- Faz 1 (2026-11-10): panelden GitHub token ile repo ekleme -- fetch_repository_by_name ---
+
+
+def test_fetch_repository_by_name_sends_pat_as_bearer_token():
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["authorization"] = request.headers["Authorization"]
+        captured["path"] = request.url.path
+        return httpx.Response(200, json=_make_repo(999))
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    repo_json = fetch_repository_by_name("https://api.github.com", "ghp_admin_pat", "acme", "repo-999", http_client=client)
+
+    assert captured["authorization"] == "Bearer ghp_admin_pat"
+    assert captured["path"] == "/repos/acme/repo-999"
+    assert repo_json["id"] == 999
+
+
+def test_fetch_repository_by_name_raises_http_status_error_on_404():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"message": "Not Found"})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(httpx.HTTPStatusError) as excinfo:
+        fetch_repository_by_name("https://api.github.com", "ghp_x", "acme", "missing-repo", http_client=client)
+    assert excinfo.value.response.status_code == 404
+
+
+def test_fetch_repository_by_name_raises_http_status_error_on_403():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403, json={"message": "Forbidden"})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(httpx.HTTPStatusError) as excinfo:
+        fetch_repository_by_name("https://api.github.com", "ghp_x", "acme", "forbidden-repo", http_client=client)
+    assert excinfo.value.response.status_code == 403

@@ -42,6 +42,25 @@
 **Bilinmeyen nokta (ASSUMPTIONS.md #8):** GHES kullanıyorsanız kurulum
 onay akışı farklı olabilir — bu depoda doğrulanmadı.
 
+### 2b. Tek bir repoyu panelden token ile ekleme (hibrit model)
+
+GitHub App'in kurulu olduğu organizasyonun dışında tek bir repoyu hızlıca
+eklemek için App kurulumunu tekrarlamanıza gerek yok:
+
+1. `deploy/secrets/repo_token_encryption_key` dosyasının var olduğundan
+   emin olun (yoksa üretin, bkz. `deploy/secrets/README.md`
+   "repo_token_encryption_key"), `docker compose up -d app orchestrator`
+   ile yeniden başlatın.
+2. GitHub'da fine-grained bir Personal Access Token oluşturun, sadece
+   ilgili repo için **Contents: Read-only** ve **Metadata: Read-only**
+   izinleriyle.
+3. Admin olarak `/repositories` sayfasına girin, "+ Proje Ekle" formuna
+   `owner/repo` ve token'ı girin.
+4. Bir dakika içinde orchestrator isteği işler: başarılıysa repo normal
+   listede "Manuel (PAT)" etiketiyle görünür ve ilk taraması otomatik
+   kuyruğa girer; başarısızsa "Bekleyen proje ekleme istekleri" tablosunda
+   anlaşılır bir hata mesajı görünür (token geçersiz/yetkisiz/repo yok).
+
 ## 3. İlk admin oluşturma
 
 TOTP kaldırıldığı için (ASSUMPTIONS.md #14) bu artık tek adım:

@@ -4,73 +4,87 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Scanner Panel{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <script src="/static/theme.js"></script>
+  <script src="/static/nav.js"></script>
+  <script src="/static/charts.js"></script>
+  <script src="/static/rows.js"></script>
   <script src="/static/vendor/htmx.min.js"></script>
-  <style>
-    :root { color-scheme: light dark; }
-    * { box-sizing: border-box; }
-    body { font-family: system-ui, sans-serif; margin: 0; background: #f6f7f9; color: #1a1a1a; }
-    body.with-sidebar { display: flex; min-height: 100vh; }
-    .sidebar { background: #1f2a3a; color: #fff; width: 220px; flex: 0 0 220px; min-height: 100vh; padding: 1rem 0; display: flex; flex-direction: column; position: sticky; top: 0; align-self: flex-start; }
-    .sidebar .brand { font-weight: 700; color: #fff; font-size: 1.05rem; padding: 0 1.25rem 1rem; border-bottom: 1px solid #334158; margin-bottom: 0.5rem; }
-    .sidebar nav { display: flex; flex-direction: column; flex: 1; }
-    .sidebar nav a { color: #d7e3f5; text-decoration: none; font-size: 0.9rem; padding: 0.55rem 1.25rem; }
-    .sidebar nav a:hover { color: #fff; background: #2a3750; }
-    .sidebar nav a.active { color: #fff; background: #2a3750; font-weight: 600; border-left: 3px solid #4d8fd6; }
-    .sidebar .nav-section-label { color: #7f93b0; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.9rem 1.25rem 0.3rem; }
-    .sidebar .who-block { border-top: 1px solid #334158; padding: 0.9rem 1.25rem; font-size: 0.8rem; color: #9fb3cc; }
-    .sidebar .who-block form { margin-top: 0.5rem; }
-    .sidebar .who-block .btn { width: 100%; }
-    main { flex: 1; padding: 1.5rem; max-width: 1200px; margin: 0 auto; min-width: 0; }
-    table { border-collapse: collapse; width: 100%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
-    th, td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid #e5e8ec; font-size: 0.9rem; }
-    th { background: #eef1f5; }
-    .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 0.75rem; font-size: 0.75rem; font-weight: 600; }
-    .badge-open, .badge-OPEN { background: #fde2e2; color: #9b1c1c; }
-    .badge-RESOLVED, .badge-ROTATED { background: #dcf5e0; color: #1e7a34; }
-    .badge-NEEDS_REVIEW { background: #fdf0d5; color: #94650a; }
-    .badge-ACCEPTED_RISK, .badge-FALSE_POSITIVE, .badge-NOT_AFFECTED { background: #e4e6eb; color: #41454b; }
-    .card { background: #fff; border-radius: 0.5rem; padding: 1rem 1.25rem; box-shadow: 0 1px 2px rgba(0,0,0,0.08); margin-bottom: 1rem; }
-    .flash { padding: 0.6rem 1rem; border-radius: 0.4rem; margin-bottom: 1rem; font-size: 0.9rem; }
-    .flash-error { background: #fde2e2; color: #9b1c1c; }
-    .flash-ok { background: #dcf5e0; color: #1e7a34; }
-    form.inline { display: inline; }
-    button, input[type=submit] { cursor: pointer; }
-    .btn { display: inline-block; padding: 0.35rem 0.8rem; border-radius: 0.35rem; border: 1px solid #c7ccd4; background: #fff; font-size: 0.85rem; }
-    .btn-primary { background: #1f2a3a; color: #fff; border-color: #1f2a3a; }
-    .btn-danger { background: #9b1c1c; color: #fff; border-color: #9b1c1c; }
-    label { display: block; margin: 0.5rem 0 0.2rem; font-size: 0.85rem; }
-    input[type=text], input[type=password], select { padding: 0.4rem; width: 100%; max-width: 320px; box-sizing: border-box; }
-    .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.75rem; }
-    .stat { background: #fff; border-radius: 0.5rem; padding: 1rem; box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
-    .stat .n { font-size: 1.8rem; font-weight: 700; }
-    .stat .l { font-size: 0.8rem; color: #666; }
-    code.secret { font-family: ui-monospace, monospace; background: #f1f1f1; padding: 0.15rem 0.4rem; border-radius: 0.25rem; }
-  </style>
 </head>
 <body{% if user %} class="with-sidebar"{% endif %}>
+  {% if not user %}
+  <button type="button" class="theme-toggle js-theme-toggle" aria-label="Koyu moda geç" title="Koyu/açık mod">🌙</button>
+  {% endif %}
   {% if user %}
   {% set path = request.url.path %}
-  <div class="sidebar">
-    <div class="brand">Scanner Panel</div>
+  <div class="topbar">
+    <div class="brand"><span class="dot"></span> Scanner Panel</div>
+    <button type="button" class="sidebar-toggle" id="sidebar-toggle" aria-label="Menüyü aç/kapat" aria-controls="sidebar" aria-expanded="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+  </div>
+  <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+  <div class="sidebar" id="sidebar">
+    <div class="brand"><span class="dot"></span> Scanner Panel</div>
     <nav>
-      <a href="/" {% if path == "/" %}class="active"{% endif %}>Bugün</a>
-      <a href="/repositories" {% if path.startswith("/repositories") %}class="active"{% endif %}>Repolar</a>
-      <a href="/findings" {% if path.startswith("/findings") %}class="active"{% endif %}>SCA Bulguları</a>
-      <a href="/secrets" {% if path.startswith("/secrets") %}class="active"{% endif %}>Secret Bulguları</a>
-      <a href="/action-groups" {% if path.startswith("/action-groups") %}class="active"{% endif %}>Aksiyon Grupları</a>
-      <a href="/blast-radius" {% if path.startswith("/blast-radius") %}class="active"{% endif %}>Blast Radius</a>
-      <a href="/coverage" {% if path.startswith("/coverage") %}class="active"{% endif %}>Coverage</a>
-      <a href="/tokens" {% if path.startswith("/tokens") %}class="active"{% endif %}>API Token'larım</a>
+      <a href="/" {% if path == "/" %}class="active"{% endif %}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v9a1 1 0 0 0 1 1h3v-6h6v6h3a1 1 0 0 0 1-1v-9"/></svg>
+        Bugün
+      </a>
+      <a href="/analytics" {% if path.startswith("/analytics") %}class="active"{% endif %}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M11 20V4M18 20v-7"/></svg>
+        Analitik
+      </a>
+      <a href="/repositories" {% if path.startswith("/repositories") %}class="active"{% endif %}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6Z"/></svg>
+        Repolar
+      </a>
+      <a href="/findings" {% if path.startswith("/findings") %}class="active"{% endif %}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4m0 4h.01M10.3 3.9 2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+        SCA Bulguları
+      </a>
+      <a href="/secrets" {% if path.startswith("/secrets") %}class="active"{% endif %}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="3.5"/><path d="m10.5 13 6-6M15 7l2 2M18 4l2 2"/></svg>
+        Secret Bulguları
+      </a>
+      <a href="/blast-radius" {% if path.startswith("/blast-radius") %}class="active"{% endif %}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+        Blast Radius
+      </a>
+      <a href="/coverage" {% if path.startswith("/coverage") %}class="active"{% endif %}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 6v6c0 4.5 3.2 7.6 8 9 4.8-1.4 8-4.5 8-9V6l-8-3Z"/><path d="m9 12 2 2 4-4"/></svg>
+        Coverage
+      </a>
+      <a href="/tokens" {% if path.startswith("/tokens") %}class="active"{% endif %}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="m11 12 8-8M16 4h4v4M19 7l2 2"/></svg>
+        API Token'larım
+      </a>
       {% if user.role == "admin" %}
       <div class="nav-section-label">Yönetim</div>
-      <a href="/owners" {% if path.startswith("/owners") %}class="active"{% endif %}>Sahipler</a>
-      <a href="/users" {% if path.startswith("/users") %}class="active"{% endif %}>Kullanıcılar</a>
-      <a href="/audit-log" {% if path.startswith("/audit-log") %}class="active"{% endif %}>Audit Log</a>
-      <a href="/settings" {% if path.startswith("/settings") %}class="active"{% endif %}>Ayarlar</a>
+      <a href="/owners" {% if path.startswith("/owners") %}class="active"{% endif %}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.3"/><path d="M15.5 14.2c2.2.4 4 2.2 4.5 4.8"/></svg>
+        Sahipler
+      </a>
+      <a href="/users" {% if path.startswith("/users") %}class="active"{% endif %}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>
+        Kullanıcılar
+      </a>
+      <a href="/audit-log" {% if path.startswith("/audit-log") %}class="active"{% endif %}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>
+        Audit Log
+      </a>
+      <a href="/settings" {% if path.startswith("/settings") %}class="active"{% endif %}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V19a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>
+        Ayarlar
+      </a>
       {% endif %}
     </nav>
     <div class="who-block">
-      <div>{{ user.username }} ({{ user.role }})</div>
+      <div class="who-name">{{ user.username }} <span class="muted">({{ user.role }})</span></div>
+      <button type="button" class="theme-toggle-inline js-theme-toggle" aria-label="Koyu moda geç">
+        <span class="icon">🌙</span><span class="label">Koyu moda geç</span>
+      </button>
       <form method="post" action="/logout">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <button class="btn" type="submit">Çıkış</button>

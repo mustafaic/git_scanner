@@ -1,24 +1,31 @@
 {% extends "base.html" %}
 {% block title %}Audit Log{% endblock %}
 {% block content %}
-<h2>Audit Log</h2>
-<p><a href="/audit-log/export.csv">CSV indir</a></p>
+<div class="page-header">
+  <h2>Audit Log</h2>
+  <div class="page-actions">
+    <a class="btn" href="/audit-log/export.csv">CSV indir</a>
+  </div>
+</div>
+<div class="table-wrap">
 <table>
-  <thead><tr><th>Zaman</th><th>Aktör</th><th>Eylem</th><th>Hedef</th><th>Detay</th></tr></thead>
+  <thead><tr><th class="col-num">#</th><th>Zaman</th><th>Aktör</th><th>Eylem</th><th>Hedef</th><th>Detay</th></tr></thead>
   <tbody>
     {% for e in entries %}
     <tr>
-      <td>{{ e.created_at }}</td>
+      <td class="col-num">{{ loop.index0 + 1 + (page - 1) * page_size }}</td>
+      <td>{{ e.created_at | ts }}</td>
       <td>{{ e.actor_username or "-" }}</td>
       <td>{{ e.action }}</td>
       <td>{% if e.target_type %}{{ e.target_type }}:{{ e.target_id }}{% else %}-{% endif %}</td>
       <td>{{ e.detail or "-" }}</td>
     </tr>
     {% else %}
-    <tr><td colspan="5">Henüz audit log kaydı yok.</td></tr>
+    <tr><td colspan="6">Henüz audit log kaydı yok.</td></tr>
     {% endfor %}
   </tbody>
 </table>
+</div>
 <p>
   {% if page > 1 %}<a href="/audit-log?page={{ page - 1 }}">&larr; Önceki</a>{% endif %}
   {% if has_more %} | <a href="/audit-log?page={{ page + 1 }}">Sonraki &rarr;</a>{% endif %}

@@ -5,7 +5,7 @@
 <div class="card">
   <h2>{{ finding.package_name }} {{ finding.version }} &mdash; {{ finding.canonical_vulnerability_id | cve_id(finding.aliases) }}</h2>
   <p><span class="badge badge-{{ finding.lifecycle_status }}">{{ finding.lifecycle_status }}</span>
-     {% if finding.kev %}<span class="badge badge-OPEN">KEV</span>{% endif %}
+     {% if finding.kev %}<span class="badge sev-critical" title="CISA KEV: aktif olarak sömürülüyor">⚠️ KEV</span>{% endif %}
      {% if finding.verification_status == "NEEDS_REVIEW" %}<span class="badge badge-NEEDS_REVIEW">NEEDS_REVIEW</span>{% endif %}</p>
   <table>
     <tr><th>Repo</th><td>{{ repo_name }}</td></tr>
@@ -13,9 +13,9 @@
     <tr><th>Ekosistem</th><td>{{ finding.ecosystem }}</td></tr>
     <tr><th>Purl</th><td>{{ finding.purl or "-" }}</td></tr>
     <tr><th>Scope/Relation</th><td>{{ finding.scope }} / {{ finding.relation }}</td></tr>
-    <tr><th>CVSS</th><td>{{ finding.severity_cvss_score if finding.severity_cvss_score is not none else "-" }} ({{ finding.severity_cvss_vector or "-" }}, kaynak: {{ finding.severity_source or "-" }})</td></tr>
+    <tr><th>CVSS</th><td>{{ finding.severity_cvss_score | severity_badge }} ({{ finding.severity_cvss_vector or "-" }}, kaynak: {{ finding.severity_source or "-" }})</td></tr>
     <tr><th>EPSS</th><td>{{ finding.epss_score if finding.epss_score is not none else "-" }} (percentile {{ finding.epss_percentile if finding.epss_percentile is not none else "-" }})</td></tr>
-    <tr><th>Fix</th><td>{{ finding.fix_status }} {{ finding.fix_version or "" }}</td></tr>
+    <tr><th>Fix</th><td>{{ finding.fix_status | fix_status_label(finding.fix_version) }}</td></tr>
     {% if sla %}
     <tr><th>SLA</th><td>
       {% if sla.overdue %}<span class="badge badge-OPEN">{{ -sla.days_remaining }} gün gecikmiş</span> (hedef: {{ sla.due_date }})
@@ -23,9 +23,9 @@
     </td></tr>
     {% endif %}
     <tr><th>Tüm kimlikler</th><td>{{ ([finding.canonical_vulnerability_id] + finding.aliases) | join(", ") }}</td></tr>
-    <tr><th>İlk görülme</th><td>{{ finding.first_seen_at }}</td></tr>
-    <tr><th>Son görülme</th><td>{{ finding.last_seen_at }}</td></tr>
-    <tr><th>Çözülme</th><td>{{ finding.resolved_at or "-" }}</td></tr>
+    <tr><th>İlk görülme</th><td>{{ finding.first_seen_at | ts }}</td></tr>
+    <tr><th>Son görülme</th><td>{{ finding.last_seen_at | ts }}</td></tr>
+    <tr><th>Çözülme</th><td>{{ finding.resolved_at | ts }}</td></tr>
     {% if finding.needs_review_reason %}<tr><th>Review nedeni</th><td>{{ finding.needs_review_reason }}</td></tr>{% endif %}
   </table>
 </div>
@@ -45,47 +45,53 @@
     <input type="text" id="reason" name="reason" placeholder="örn. false positive, test kodu">
     <p><button class="btn btn-primary" type="submit">Kaydet</button></p>
   </form>
-  <p style="color:#666; font-size:0.8rem;">RESOLVED durumu panelden elle ayarlanamaz -- sadece eşleştirme motoru (taze advisory DB ile) kapatabilir.</p>
+  <p class="hint">RESOLVED durumu panelden elle ayarlanamaz -- sadece eşleştirme motoru (taze advisory DB ile) kapatabilir.</p>
 </div>
 {% endif %}
 
 <div class="card">
   <h3>Kanıt: hangi taramadan geldi</h3>
+  <div class="table-wrap">
   <table>
-    <thead><tr><th>Tarama türü</th><th>Commit</th><th>Scanner</th><th>Advisory DB tarihi</th><th>Zaman</th></tr></thead>
+    <thead><tr><th class="col-num">#</th><th>Tarama türü</th><th>Commit</th><th>Scanner</th><th>Advisory DB tarihi</th><th>Zaman</th></tr></thead>
     <tbody>
       {% for run in source_runs %}
       <tr>
+        <td class="col-num">{{ loop.index }}</td>
         <td>{{ run.run_type }}</td>
         <td><code class="secret">{{ (run.commit_sha or "-")[:12] }}</code></td>
         <td>{{ run.scanner_name or "-" }} {{ run.scanner_version or "" }}</td>
-        <td>{{ run.advisory_db_as_of or "-" }}</td>
-        <td>{{ run.started_at }}</td>
+        <td>{{ run.advisory_db_as_of | ts }}</td>
+        <td>{{ run.started_at | ts }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="5">Kanıt kaydı yok.</td></tr>
+      <tr><td colspan="6">Kanıt kaydı yok.</td></tr>
       {% endfor %}
     </tbody>
   </table>
+  </div>
 </div>
 
 <div class="card">
   <h3>Olay geçmişi</h3>
+  <div class="table-wrap">
   <table>
-    <thead><tr><th>Zaman</th><th>Olay</th><th>Durum</th><th>Aktör</th><th>Gerekçe</th></tr></thead>
+    <thead><tr><th class="col-num">#</th><th>Zaman</th><th>Olay</th><th>Durum</th><th>Aktör</th><th>Gerekçe</th></tr></thead>
     <tbody>
       {% for e in events %}
       <tr>
-        <td>{{ e.created_at }}</td>
+        <td class="col-num">{{ loop.index }}</td>
+        <td>{{ e.created_at | ts }}</td>
         <td>{{ e.event_type }}</td>
         <td>{{ e.from_status or "-" }} &rarr; {{ e.to_status or "-" }}</td>
         <td>{{ e.actor }}</td>
         <td>{{ e.reason or "-" }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="5">Henüz olay yok.</td></tr>
+      <tr><td colspan="6">Henüz olay yok.</td></tr>
       {% endfor %}
     </tbody>
   </table>
+  </div>
 </div>
 {% endblock %}

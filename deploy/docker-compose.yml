@@ -118,6 +118,16 @@ services:
       GIT_MIRRORS_DIR: /mirrors
       DAILY_JOBS_INTERVAL_HOURS: ${DAILY_JOBS_INTERVAL_HOURS:-24}
       ADVISORY_MAX_AGE_SECONDS: ${ADVISORY_MAX_AGE_SECONDS:-172800}
+      # Teams webhook bildirimleri (docs/THREAT_MODEL.md 9): URL'nin kendisi
+      # admin panelden (DB, sifreli) girilir -- burada SADECE sifreleme
+      # anahtarinin dosya yolu (bkz. deploy/secrets/README.md).
+      TEAMS_ENCRYPTION_KEY_PATH: ${TEAMS_ENCRYPTION_KEY_PATH:-/run/secrets/teams_encryption_key}
+      # Panelden GitHub token ile repo ekleme (hibrit model, docs/THREAT_MODEL.md
+      # yeni madde): admin'in /repositories sayfasindan girdigi PAT'ler bu
+      # anahtarla sifrelenir -- orchestrator aynisini cozup GitHub'a karsi
+      # kullanir (bkz. deploy/secrets/README.md "repo_token_encryption_key").
+      REPO_TOKEN_ENCRYPTION_KEY_PATH: ${REPO_TOKEN_ENCRYPTION_KEY_PATH:-/run/secrets/repo_token_encryption_key}
+      PANEL_BASE_URL: ${PANEL_BASE_URL:-}
     volumes:
       - ./secrets:/run/secrets:ro
       - staging:/staging
@@ -166,6 +176,16 @@ services:
       # terminasyonu Asama 5 kapsami) false'a cekilebilir -- bilinen/
       # belgelenmis sinirlama, PROD'DA DAIMA true (TLS'in ardinda) olmali.
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+      # Teams webhook bildirimleri (docs/THREAT_MODEL.md 9): /settings
+      # sayfasi webhook URL'sini bu anahtarla sifreleyip DB'ye yazar --
+      # orchestrator'daki anahtarla AYNI olmali (ayni dosya, iki serviste de
+      # mount edilir, bkz. deploy/secrets/README.md).
+      TEAMS_ENCRYPTION_KEY_PATH: ${TEAMS_ENCRYPTION_KEY_PATH:-/run/secrets/teams_encryption_key}
+      # bkz. orchestrator servisindeki ayni degiskenin yorumu -- app burada
+      # SIFRELER (form submit), orchestrator cozup kullanir.
+      REPO_TOKEN_ENCRYPTION_KEY_PATH: ${REPO_TOKEN_ENCRYPTION_KEY_PATH:-/run/secrets/repo_token_encryption_key}
+    volumes:
+      - ./secrets:/run/secrets:ro
     depends_on:
       migrate:
         condition: service_completed_successfully

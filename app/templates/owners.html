@@ -2,7 +2,7 @@
 {% block title %}Sahip Eşlemesi{% endblock %}
 {% block content %}
 <h2>Sahip Eşlemesi (A5)</h2>
-<p style="color:#666; font-size:0.85rem;">CODEOWNERS otomatik tespiti henüz yok -- repo→ekip/kişi eşlemesi CSV ile içe aktarılır. Format: <code>repo_full_name,owner_identifier</code> (başlık satırı opsiyonel).</p>
+<p class="hint">CODEOWNERS otomatik tespiti henüz yok -- repo→ekip/kişi eşlemesi CSV ile içe aktarılır. Format: <code>repo_full_name,owner_identifier</code> (başlık satırı opsiyonel).</p>
 
 {% if result %}
 <div class="flash flash-ok">
@@ -20,14 +20,16 @@
   </form>
 </div>
 
+<div class="table-wrap">
 <table>
-  <thead><tr><th>Repo</th><th>Sahip</th><th>Kaynak</th></tr></thead>
+  <thead><tr><th class="col-num">#</th><th>Repo</th><th>Sahip</th><th>Kaynak</th></tr></thead>
   <tbody>
     {% for m in mappings %}
-    <tr><td>{{ m.repo_name }}</td><td>{{ m.owner }}</td><td>{{ m.source }}</td></tr>
+    <tr><td class="col-num">{{ loop.index }}</td><td>{{ m.repo_name }}</td><td>{{ m.owner }}</td><td>{{ m.source }}</td></tr>
     {% else %}
-    <tr><td colspan="3">Henüz sahip eşlemesi yok.</td></tr>
+    <tr><td colspan="4">Henüz sahip eşlemesi yok.</td></tr>
     {% endfor %}
   </tbody>
 </table>
+</div>
 {% endblock %}

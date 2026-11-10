@@ -30,7 +30,18 @@ if DATABASE_URL:
     from app.csrf import CSRF_COOKIE_NAME
     from app.main import app
     from core import auth
-    from core.models import AuditLog, Finding, FindingSource, Repository, ScanRun, ScanTrigger, SecretFinding, User
+    from core.models import (
+        AuditLog,
+        Finding,
+        FindingSource,
+        Repository,
+        RepoCredential,
+        RepoOnboardingRequest,
+        ScanRun,
+        ScanTrigger,
+        SecretFinding,
+        User,
+    )
 
 
 ADMIN_PASSWORD = "Str0ng!Passw0rd#2026"
@@ -49,7 +60,8 @@ def _clean(engine):
     with engine.begin() as conn:
         for table in (
             "secret_finding_events", "secret_findings", "finding_events", "finding_sources", "findings",
-            "api_tokens", "audit_log", "sessions", "users", "repositories", "scan_triggers", "scan_runs",
+            "api_tokens", "audit_log", "sessions", "users",
+            "repo_credentials", "repo_onboarding_requests", "repositories", "scan_triggers", "scan_runs",
             "notification_log", "settings", "repo_owners",
         ):
             conn.execute(text(f"DELETE FROM {table}"))
@@ -516,60 +528,10 @@ def test_create_user_rejects_duplicate_username_and_weak_password(client, engine
     assert weak_resp.status_code == 400
 
 
-# --- Stage 4 part 1: A1 aksiyon gruplari + A2 blast radius -----------------
-
-def test_action_groups_group_findings_by_package_and_fix_version(client, engine):
-    admin_id = _make_admin(engine)
-    from sqlalchemy.orm import sessionmaker
-
-    Session = sessionmaker(bind=engine, future=True)
-    with Session() as session:
-        session.add_all([
-            Repository(github_repo_id=10, full_name="acme/a", owner="acme", name="a", default_branch="main", visibility="private"),
-            Repository(github_repo_id=11, full_name="acme/b", owner="acme", name="b", default_branch="main", visibility="private"),
-        ])
-        session.add_all([
-            Finding(
-                repo_id=10, lockfile_path="package-lock.json", ecosystem="npm", package_name="lodash",
-                version="4.17.15", canonical_vulnerability_id="GHSA-aaa", verification_status="VERIFIED",
-                lifecycle_status="OPEN", fix_status="PATCH_AVAILABLE", fix_version="4.17.19",
-            ),
-            Finding(
-                repo_id=11, lockfile_path="package-lock.json", ecosystem="npm", package_name="lodash",
-                version="4.17.10", canonical_vulnerability_id="GHSA-bbb", verification_status="VERIFIED",
-                lifecycle_status="OPEN", fix_status="PATCH_AVAILABLE", fix_version="4.17.19",
-            ),
-        ])
-        session.commit()
-
-    _login(client, "admin", ADMIN_PASSWORD)
-    resp = client.get("/action-groups")
-    assert resp.status_code == 200
-    assert "lodash" in resp.text
-    assert "npm install lodash@4.17.19" in resp.text
-    assert "2" in resp.text  # repo_count/finding_count
-
-
-def test_action_groups_shows_warning_instead_of_hint_for_unsafe_package_name(client, engine):
-    admin_id = _make_admin(engine)
-    from sqlalchemy.orm import sessionmaker
-
-    Session = sessionmaker(bind=engine, future=True)
-    with Session() as session:
-        session.add(Repository(github_repo_id=12, full_name="acme/c", owner="acme", name="c", default_branch="main", visibility="private"))
-        session.add(Finding(
-            repo_id=12, lockfile_path="package-lock.json", ecosystem="npm", package_name="lodash; rm -rf /",
-            version="4.17.15", canonical_vulnerability_id="GHSA-ccc", verification_status="VERIFIED",
-            lifecycle_status="OPEN", fix_status="PATCH_AVAILABLE", fix_version="4.17.19",
-        ))
-        session.commit()
-
-    _login(client, "admin", ADMIN_PASSWORD)
-    resp = client.get("/action-groups")
-    assert resp.status_code == 200
-    assert "rm -rf" not in resp.text or "doğrulanamadı" in resp.text
-    assert "doğrulanamadı" in resp.text
-
+# --- Stage 4 part 1: A2 blast radius --------------------------------------
+# NOT (2026-11-11): A1 Aksiyon Gruplari testleri KALDIRILDI -- sayfanin
+# kendisi kullanici karariyla tamamen kaldirildi (bkz. app/routes_blast_radius.py
+# docstring'i).
 
 def test_blast_radius_search_finds_affected_repos(client, engine):
     admin_id = _make_admin(engine)
@@ -998,6 +960,99 @@ def test_dashboard_owner_filter_shows_only_owned_repo_findings(client, engine):
     resp = client.get("/", params={"owner": "team-a"})
     assert "GHSA-team-a" in resp.text
     assert "GHSA-team-b" not in resp.text
+
+
+# --- Faz 1 (2026-11-10): panelden GitHub token ile repo ekleme (hibrit model) ---
+
+def test_repositories_add_requires_admin_and_validates_input(client, engine):
+    _make_viewer(engine)
+    _make_admin(engine)
+
+    _login(client, "viewer", VIEWER_PASSWORD)
+    viewer_csrf = _csrf_token(client)
+    viewer_resp = client.post(
+        "/repositories/add", data={"repo": "octocat/hello-world", "token": "ghp_x", "csrf_token": viewer_csrf},
+    )
+    assert viewer_resp.status_code == 403
+    client.post("/logout", data={"csrf_token": viewer_csrf})
+
+    _login(client, "admin", ADMIN_PASSWORD)
+    admin_csrf = _csrf_token(client)
+
+    bad_format = client.post(
+        "/repositories/add", data={"repo": "not-a-valid-repo-name", "token": "ghp_x", "csrf_token": admin_csrf},
+    )
+    assert bad_format.status_code == 400
+    assert "owner/repo" in bad_format.text
+
+    # test-runner ortaminda REPO_TOKEN_ENCRYPTION_KEY_PATH KASITLI olarak
+    # ayarli degil (deploy/docker-compose.yml test-runner servisi ./secrets'i
+    # mount etmez) -- bu gercek bir davranisi dogrular: anahtar yoksa token
+    # hic DB'ye yazilmaz, acik bir hata gosterilir (sessizce sifresiz kaydetmez).
+    no_key = client.post(
+        "/repositories/add", data={"repo": "octocat/hello-world", "token": "ghp_x", "csrf_token": admin_csrf},
+    )
+    assert no_key.status_code == 400
+    assert "REPO_TOKEN_ENCRYPTION_KEY_PATH" in no_key.text
+
+    with engine.begin() as conn:
+        count = conn.execute(text("SELECT count(*) FROM repo_onboarding_requests")).scalar_one()
+    assert count == 0
+
+
+def test_repositories_remove_credential_and_dismiss_require_admin(client, engine):
+    _make_viewer(engine)
+    _make_admin(engine)
+    from sqlalchemy.orm import sessionmaker
+
+    Session = sessionmaker(bind=engine, future=True)
+    with Session() as session:
+        session.add(Repository(
+            github_repo_id=80, full_name="acme/manual-repo", owner="acme", name="manual-repo",
+            default_branch="main", visibility="private", discovered_via="manual_pat",
+        ))
+        session.add(RepoCredential(github_repo_id=80, encrypted_token="irrelevant-ciphertext", added_by_user_id=1))
+        req = RepoOnboardingRequest(
+            owner="acme", repo_name="pending-one", encrypted_token="x", requested_by_user_id=1, status="pending",
+        )
+        session.add(req)
+        session.commit()
+        session.refresh(req)
+        req_id = req.id
+
+    _login(client, "viewer", VIEWER_PASSWORD)
+    viewer_csrf = _csrf_token(client)
+    assert client.post("/repositories/80/remove-credential", data={"csrf_token": viewer_csrf}).status_code == 403
+    assert client.post(
+        f"/repositories/onboarding-requests/{req_id}/dismiss", data={"csrf_token": viewer_csrf},
+    ).status_code == 403
+    client.post("/logout", data={"csrf_token": viewer_csrf})
+
+    _login(client, "admin", ADMIN_PASSWORD)
+    admin_csrf = _csrf_token(client)
+    remove_resp = client.post(
+        "/repositories/80/remove-credential", data={"csrf_token": admin_csrf}, follow_redirects=False,
+    )
+    assert remove_resp.status_code == 303
+    with engine.begin() as conn:
+        cred_count = conn.execute(text("SELECT count(*) FROM repo_credentials WHERE github_repo_id=80")).scalar_one()
+        excluded = conn.execute(text("SELECT scan_excluded FROM repositories WHERE github_repo_id=80")).scalar_one()
+        audit_action = conn.execute(
+            text("SELECT action FROM audit_log WHERE action='repo_credential_removed'")
+        ).scalar_one()
+    assert cred_count == 0
+    assert excluded is True
+    assert audit_action == "repo_credential_removed"
+
+    dismiss_resp = client.post(
+        f"/repositories/onboarding-requests/{req_id}/dismiss", data={"csrf_token": admin_csrf}, follow_redirects=False,
+    )
+    assert dismiss_resp.status_code == 303
+    with engine.begin() as conn:
+        req_count = conn.execute(
+            text("SELECT count(*) FROM repo_onboarding_requests WHERE id=:id"), {"id": req_id}
+        ).scalar_one()
+    assert req_count == 0
 
 
 # --- Stage 4 part 6: A3/A10 tarama dahil/haric politikasi + viewer tetikleme ---

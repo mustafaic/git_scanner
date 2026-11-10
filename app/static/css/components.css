@@ -1,0 +1,584 @@
+/* Scanner Panel — component styles. Bkz. .claude/skills/scanner-design-system/SKILL.md
+   Konsept: "enstrüman paneli" -- renk anlam taşır (severity), sakin bir
+   amber marka vurgusu, veri odaklı tipografi (sayılar için tabular-nums +
+   monospace). Hareket SADECE grafiklerin tek seferlik "çizilme" anında ve
+   bir kullanıcı eylemine (açma/kapama, tema değişimi) cevaben kullanılır --
+   her karta jenerik fade-in YOK (bkz. prefers-reduced-motion bölümü, dosya sonu). */
+
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+html, body { background: var(--bg); }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  transition: background-color var(--duration-base) var(--ease), color var(--duration-base) var(--ease);
+  -webkit-font-smoothing: antialiased;
+}
+body.with-sidebar { display: flex; min-height: 100vh; }
+body:not(.with-sidebar) {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse 80% 60% at 50% 0%, color-mix(in srgb, var(--brand) 7%, transparent), transparent 70%), var(--bg);
+}
+body:not(.with-sidebar) main { flex: 0 0 auto; margin: 0; }
+
+a { color: var(--brand); text-decoration-color: color-mix(in srgb, var(--brand) 45%, transparent); }
+a:hover { text-decoration: underline; }
+
+h2 { font-size: 1.5rem; font-weight: 700; margin: 0 0 1rem; letter-spacing: -0.012em; }
+h3 { font-size: 1.05rem; font-weight: 650; margin: 0 0 0.6rem; letter-spacing: -0.006em; }
+
+/* ---- TEK dikey ritim kaynagi ----
+   Sayfa govdesindeki her bagimsiz blok (kart, stat-grid, donut-row, tablo,
+   filtre cubugu, flash) arasindaki bosluk HER ZAMAN --gap-section. Her
+   bilesenin kendi margin-bottom'unu tasimasi yerine burada tek bir "owl"
+   kuralindan dagitilir -- boylece "kartlar bitisik ama grafikler ayrik"
+   gibi tutarsizliklar YAPISAL OLARAK imkansiz hale gelir. Grid gap'leri de
+   ayni tokeni kullanir (bkz. .stat-grid/.donut-row/.analytics-grid). */
+main > * { margin-top: 0; margin-bottom: 0; }
+main > * + * { margin-top: var(--gap-section); }
+/* Tek istisna: bir baslik ve HEMEN ardindan gelen kendi alt-aciklamasi bir
+   ciftir, aralarinda tam ritim bosluğu olmasi onlari kopuk gosterir. */
+main > h2 { margin-bottom: 0; }
+main > h2 + p.hint { margin-top: 0.35rem; }
+
+/* ---- Sidebar / mobile top bar ---- */
+.topbar {
+  display: none;
+  align-items: center;
+  gap: 0.75rem;
+  background: var(--sidebar-bg);
+  color: var(--sidebar-text-strong);
+  padding: 0.6rem 1rem;
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  border-bottom: 1px solid var(--sidebar-border);
+}
+.topbar .brand { display: flex; align-items: center; gap: 0.5rem; font-weight: 700; }
+.topbar .brand .dot { width: 0.6rem; height: 0.6rem; border-radius: 2px; background: var(--brand); }
+.sidebar-toggle {
+  display: none;
+  background: transparent;
+  border: 1px solid var(--sidebar-border);
+  color: var(--sidebar-text-strong);
+  border-radius: var(--radius-sm);
+  width: 2.1rem;
+  height: 2.1rem;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.sidebar-backdrop { display: none; }
+
+.sidebar {
+  background: var(--sidebar-bg);
+  color: var(--sidebar-text-strong);
+  width: 230px;
+  flex: 0 0 230px;
+  min-height: 100vh;
+  padding: 1rem 0;
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  border-right: 1px solid var(--sidebar-border);
+  transition: background-color var(--duration-base) var(--ease), border-color var(--duration-base) var(--ease);
+}
+.sidebar .brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 700;
+  color: var(--sidebar-text-strong);
+  font-size: 1.05rem;
+  padding: 0 1.25rem 1rem;
+  border-bottom: 1px solid var(--sidebar-border);
+  margin-bottom: 0.5rem;
+}
+.sidebar .brand .dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 2px;
+  background: var(--brand);
+  flex: 0 0 auto;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 20%, transparent);
+}
+.sidebar nav { display: flex; flex-direction: column; flex: 1; }
+.sidebar nav a {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  color: var(--sidebar-text);
+  text-decoration: none;
+  font-size: 0.9rem;
+  padding: 0.55rem 1.25rem;
+  border-left: 3px solid transparent;
+  transition: background-color var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease);
+}
+.sidebar nav a svg { width: 16px; height: 16px; flex: 0 0 auto; opacity: 0.75; transition: opacity var(--duration-fast) var(--ease); }
+.sidebar nav a:hover { color: var(--sidebar-text-strong); background: var(--sidebar-hover); text-decoration: none; }
+.sidebar nav a:hover svg { opacity: 1; }
+.sidebar nav a.active {
+  color: var(--sidebar-text-strong);
+  background: var(--sidebar-active-bg);
+  font-weight: 600;
+  border-left: 3px solid var(--brand);
+}
+.sidebar nav a.active svg { opacity: 1; color: var(--brand); }
+.sidebar .nav-section-label {
+  color: var(--sidebar-text);
+  opacity: 0.7;
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  padding: 0.9rem 1.25rem 0.3rem;
+}
+.sidebar .who-block {
+  border-top: 1px solid var(--sidebar-border);
+  padding: 0.9rem 1.25rem;
+  font-size: 0.8rem;
+  color: var(--sidebar-text);
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.sidebar .who-block .who-name { color: var(--sidebar-text-strong); font-weight: 600; }
+.sidebar .who-block form { margin: 0; }
+.sidebar .who-block .btn { width: 100%; }
+
+/* ---- Tema anahtarı: sidebar footer'a (veya login sayfasında sabit) ---- */
+.theme-toggle-inline {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.45rem 0.65rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--sidebar-border);
+  background: transparent;
+  color: var(--sidebar-text);
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-align: left;
+}
+.theme-toggle-inline:hover { background: var(--sidebar-hover); color: var(--sidebar-text-strong); }
+.theme-toggle-inline .icon { font-size: 0.95rem; line-height: 1; flex: 0 0 auto; transition: transform var(--duration-base) var(--ease); }
+.theme-toggle-inline:active .icon { transform: rotate(25deg); }
+
+/* Oturum açılmamış sayfalarda (login) sidebar yok -- tek başına sabit bir
+   anahtar yeterli, ama ARTIK hiçbir sayfa içeriğinin üstüne BİNMİYOR çünkü
+   sadece bu izole, chrome'suz layoutta kullanılıyor. */
+.theme-toggle {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 50;
+  width: 2.3rem;
+  height: 2.3rem;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  font-size: 1.05rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease), transform var(--duration-fast) var(--ease);
+}
+.theme-toggle:hover { border-color: var(--brand); }
+.theme-toggle:active { transform: scale(0.92); }
+
+main { flex: 1; padding: 1.75rem; max-width: 1240px; margin: 0 auto; min-width: 0; width: 100%; }
+
+/* ---- Page header ---- */
+.page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.page-header h2 { margin-bottom: 0; }
+.page-header .page-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+/* ---- Filter bar ---- */
+.filter-bar { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.filter-bar label { margin: 0; white-space: nowrap; }
+.filter-bar select, .filter-bar input { max-width: 220px; width: auto; margin: 0; }
+
+/* ---- Tables ---- */
+.table-wrap { overflow-x: auto; border-radius: var(--radius-md); }
+table { border-collapse: collapse; width: 100%; background: var(--surface); box-shadow: var(--shadow); border-radius: var(--radius-md); overflow: hidden; }
+th, td { text-align: left; padding: 0.6rem 0.8rem; border-bottom: 1px solid var(--border); font-size: 0.88rem; vertical-align: middle; }
+th { background: var(--bg-alt); color: var(--muted); font-size: 0.78rem; font-weight: 650; }
+tbody tr { transition: background-color var(--duration-fast) var(--ease); }
+tbody tr:nth-child(even) { background: var(--row-alt); }
+tbody tr:hover { background: var(--row-hover); }
+td code.secret, td .badge { font-variant-numeric: tabular-nums; }
+
+.badge { display: inline-block; padding: 0.18rem 0.55rem; border-radius: 999px; font-size: 0.74rem; font-weight: 650; white-space: nowrap; }
+.badge-open, .badge-OPEN { background: var(--danger-bg); color: var(--danger-text); }
+.badge-RESOLVED, .badge-ROTATED { background: var(--success-bg); color: var(--success-text); }
+.badge-NEEDS_REVIEW { background: var(--warning-bg); color: var(--warning-text); }
+.badge-ACCEPTED_RISK, .badge-FALSE_POSITIVE, .badge-NOT_AFFECTED { background: var(--neutral-bg); color: var(--neutral-text); }
+.badge-success { background: var(--success-bg); color: var(--success-text); }
+.badge-warning { background: var(--warning-bg); color: var(--warning-text); }
+.badge-neutral { background: var(--neutral-bg); color: var(--neutral-text); }
+.badge-danger { background: var(--danger-bg); color: var(--danger-text); }
+.sev-critical { background: var(--sev-critical-bg); color: var(--sev-critical-text); }
+.sev-high { background: var(--sev-high-bg); color: var(--sev-high-text); }
+.sev-medium { background: var(--sev-medium-bg); color: var(--sev-medium-text); }
+.sev-low { background: var(--sev-low-bg); color: var(--sev-low-text); }
+.muted { color: var(--muted); }
+.text-danger { color: var(--danger-text); }
+.hint { color: var(--muted); font-size: 0.85rem; }
+.checkbox-row { display: inline-flex; align-items: center; gap: 0.35rem; margin: 0.2rem 0 0.2rem; }
+.checkbox-list { display: flex; flex-direction: column; gap: 0.1rem; margin: 0.3rem 0 0.5rem; }
+.input-sm { max-width: 120px; }
+.input-md { max-width: 480px; width: 100%; }
+
+/* Bir tablo hücresinde/satırda birden fazla aksiyon (buton/popover) varsa
+   bunlar HER ZAMAN bu konteynerin icinde olmali -- "dip dibe" sorununun
+   kök nedeni, aralarinda bosluk olmayan ard-arda inline elemanlardi. */
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.row-actions .hint { width: 100%; margin: 0; }
+
+/* ---- Tiklanabilir satir ----
+   Bir listede satirin tamami hedefe gider (app/static/rows.js). Birincil
+   hucredeki GERCEK <a> KALIR -- klavyeyle gezinme, orta-tusla yeni sekmede
+   acma ve ekran okuyucu icin gerekli -- ama artik "link" gibi boyanmaz:
+   satirin kendisi tiklanabilir oldugu icin alti cizili renkli metin
+   gereksiz gorsel gurultuydu. Etkilesim ipucu hover'da verilir. */
+tr.row-link { cursor: pointer; }
+a.row-link-target { color: inherit; text-decoration: none; }
+a.row-link-target:hover { text-decoration: none; }
+tr.row-link:hover a.row-link-target { color: var(--brand); }
+tr.row-link:focus-within { outline: 2px solid var(--brand); outline-offset: -2px; }
+
+/* Sira numarasi sutunu: icerik degil KONUM bilgisi tasir, bu yuzden
+   gorsel agirligi dusuk (muted, kucuk, sayisal hizalama). */
+.col-num {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8rem;
+}
+
+/* Zaman damgasi: kisa (18:08:58), sayisal hizali, satir sonu bolunmez.
+   Tam deger (mikrosaniye + saat dilimi) title attribute'unda saklanir. */
+.ts { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* Bir hucrede ust uste iki bilgi (ör. tarama politikasi rozeti + canli
+   tarama durumu) -- yan yana sikistirmak yerine dikey yigin. */
+.cell-stack { display: flex; flex-direction: column; gap: 0.3rem; align-items: flex-start; }
+.cell-stack .hint { margin: 0; }
+
+/* Aksiyon hucresi: butonlar satir sonunda bolunmez, hucre kendi
+   genisligine buzulur -- boylece veri sutunlari yer kazanir. */
+td.cell-actions { white-space: nowrap; width: 1%; }
+td.cell-actions .row-actions { flex-wrap: nowrap; }
+
+/* Ikincil aksiyonlari tek bir "..." menusune toplayan tetikleyici. */
+.btn-icon { padding: 0.4rem 0.65rem; line-height: 1.2; letter-spacing: 0.1em; }
+
+/* Popover icinde birden fazla (birbirinden bagimsiz) aksiyon formu. */
+.popover-menu { display: flex; flex-direction: column; gap: 0.8rem; white-space: normal; }
+.popover-menu .menu-item { display: flex; flex-direction: column; gap: 0.4rem; align-items: flex-start; }
+.popover-menu .menu-item + .menu-item { border-top: 1px solid var(--border); padding-top: 0.8rem; }
+.popover-menu .menu-label { font-size: 0.82rem; font-weight: 650; }
+.popover-menu .hint { margin: 0; }
+.popover-menu input[type=text] { max-width: 100%; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 1.1rem 1.3rem;
+  box-shadow: var(--shadow);
+}
+.card h2, .card h3 { margin-top: 0; }
+/* Bir grid icindeki kartlarin arasini grid'in kendi gap'i verir -- kartin
+   ayrica margin tasimasi cift bosluk yaratirdi. */
+.donut-row > .card, .analytics-grid > .card { margin-bottom: 0; }
+
+.flash { padding: 0.65rem 1rem; border-radius: var(--radius-sm); font-size: 0.9rem; border: 1px solid transparent; }
+.flash-error { background: var(--danger-bg); color: var(--danger-text); border-color: color-mix(in srgb, var(--danger-text) 25%, transparent); }
+.flash-ok { background: var(--success-bg); color: var(--success-text); border-color: color-mix(in srgb, var(--success-text) 25%, transparent); }
+
+form.inline { display: inline; }
+button, input[type=submit] { cursor: pointer; }
+.btn {
+  display: inline-block;
+  padding: 0.4rem 0.85rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.85rem;
+  transition: border-color var(--duration-fast) var(--ease), background-color var(--duration-fast) var(--ease), transform var(--duration-fast) var(--ease);
+}
+.btn:hover { border-color: var(--brand); }
+.btn:active { transform: translateY(1px); }
+.btn-primary { background: var(--brand); color: var(--brand-contrast); border-color: var(--brand); font-weight: 650; }
+.btn-primary:hover { filter: brightness(1.06); }
+.btn-danger { background: var(--accent-red); color: #fff; border-color: var(--accent-red); }
+.btn-danger:hover { filter: brightness(0.94); }
+.btn:disabled, button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  filter: none;
+}
+
+label { display: block; margin: 0.5rem 0 0.2rem; font-size: 0.85rem; color: var(--text); }
+input[type=text], input[type=password], input[type=number], input[type=file], select, textarea {
+  padding: 0.45rem 0.6rem;
+  width: 100%;
+  max-width: 320px;
+  box-sizing: border-box;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  transition: border-color var(--duration-fast) var(--ease), box-shadow var(--duration-fast) var(--ease);
+}
+input:focus, select:focus, textarea:focus, .btn:focus-visible, .theme-toggle:focus-visible, .theme-toggle-inline:focus-visible, .sidebar-toggle:focus-visible, a:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+input:focus, select:focus, textarea:focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 18%, transparent); }
+
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: var(--gap-section); }
+.stat {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 1.1rem 1.2rem;
+  box-shadow: var(--shadow);
+  border-top: 2px solid transparent;
+  transition: border-color var(--duration-fast) var(--ease), box-shadow var(--duration-base) var(--ease);
+}
+.stat:hover { box-shadow: var(--shadow-md); }
+.stat .n { font-size: 1.95rem; font-weight: 700; line-height: 1.15; font-family: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.stat .l { font-size: 0.8rem; color: var(--muted); margin-top: 0.2rem; }
+/* Deger 0/onemsiz oldugunda gorsel agirligini dusur -- "230 acik bulgu"
+   ile "0 KEV" ayni gorsel vurguda olmamali (0 zaten iyi bir haberdir). */
+.stat-zero .n { color: var(--muted); font-weight: 650; opacity: 0.75; }
+/* Deger >0 oldugunda VE bu bir problem sinyaliyse (SLA gecti, aktif
+   sömürülen CVE, acik secret, inceleme bekliyor) kirmizi vurguyla one cikar. */
+.stat-alert { border-top-color: var(--accent-red); }
+.stat-alert .n { color: var(--accent-red); }
+.stat-primary .n { color: var(--brand); }
+.stat-primary { border-top-color: var(--brand); }
+
+/* Tek seferlik, orkestre edilmis giris -- SADECE dashboard'un ilk-gorus
+   istatistik kutularinda (.stat-grid'in kendisi "animate-in" class'iyla
+   opt-in eder). Her kart/tabloda tekrar eden jenerik fade-in YOK. */
+.stat-grid.animate-in .stat { animation: statRise var(--duration-base) var(--ease) both; }
+.stat-grid.animate-in .stat:nth-child(1) { animation-delay: 0ms; }
+.stat-grid.animate-in .stat:nth-child(2) { animation-delay: 45ms; }
+.stat-grid.animate-in .stat:nth-child(3) { animation-delay: 90ms; }
+.stat-grid.animate-in .stat:nth-child(4) { animation-delay: 135ms; }
+.stat-grid.animate-in .stat:nth-child(5) { animation-delay: 180ms; }
+.stat-grid.animate-in .stat:nth-child(6) { animation-delay: 225ms; }
+.stat-grid.animate-in .stat:nth-child(7) { animation-delay: 270ms; }
+.stat-grid.animate-in .stat:nth-child(8) { animation-delay: 315ms; }
+@keyframes statRise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.sev-bar { display: flex; width: 100%; height: 0.65rem; border-radius: 999px; overflow: hidden; background: var(--bg-alt); }
+.sev-bar span { height: 100%; transition: width var(--duration-chart) var(--ease); }
+/* Cubuk/donut DOLGULARI --sev-*-solid kullanir (bkz. tokens.css): yan yana
+   durduklarinda birbirinden ayrilmalari onceliklidir, metin tasimazlar. */
+.sev-bar .seg-critical { background: var(--sev-critical-solid); }
+.sev-bar .seg-high { background: var(--sev-high-solid); }
+.sev-bar .seg-medium { background: var(--sev-medium-solid); }
+.sev-bar .seg-low { background: var(--sev-low-solid); }
+.sev-bar .seg-none { background: var(--sev-none-solid); }
+.sev-bar .seg-ontime { background: var(--success-text); }
+.sev-bar .seg-overdue { background: var(--danger-text); }
+.sev-legend { display: flex; flex-wrap: wrap; gap: 0.9rem; margin-top: 0.6rem; font-size: 0.78rem; color: var(--muted); }
+.sev-legend .dot { display: inline-block; width: 0.55rem; height: 0.55rem; border-radius: 50%; margin-right: 0.35rem; vertical-align: middle; }
+
+code.secret {
+  font-family: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+  background: var(--code-bg);
+  color: var(--text);
+  padding: 0.15rem 0.4rem;
+  border-radius: 0.3rem;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+
+/* ---- Popover (native <details>/<summary> dressed as a dropdown) ---- */
+.popover { position: relative; display: inline-block; }
+.popover > summary {
+  list-style: none;
+  display: inline-block;
+  padding: 0.4rem 0.85rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease);
+}
+.popover > summary::-webkit-details-marker { display: none; }
+.popover > summary:hover { border-color: var(--brand); }
+.popover[open] > summary { border-color: var(--brand); }
+.popover .popover-panel {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  right: 0;
+  z-index: 30;
+  min-width: 260px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  padding: 0.85rem;
+  transform-origin: top right;
+}
+.popover .popover-panel form { margin: 0; }
+/* Tablonun SON satirinda acilan bir panel, altinda daha fazla satir
+   olmadigi icin .table-wrap'in (overflow-x:auto -- bu da dikey tarafi
+   KIRPAR, CSS spec kurali) alt kenarina sikisip kesiliyordu. Son satirda
+   yukari acarak bunu onluyoruz. */
+.table-wrap tbody tr:last-child .popover-panel {
+  top: auto;
+  bottom: calc(100% + 0.4rem);
+  transform-origin: bottom right;
+}
+/* details[open] -- "açma" bir kullanıcı eylemi, tepki veren bir hareket
+   burada tam yerinde (bkz. frontend-design skill: motion that answers a
+   person's action is welcome). */
+@media (prefers-reduced-motion: no-preference) {
+  .popover[open] .popover-panel { animation: popoverIn var(--duration-fast) var(--ease) both; }
+}
+@keyframes popoverIn {
+  from { opacity: 0; transform: scale(0.96) translateY(-2px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* ---- Analiz sayfasi: donut, trend ve yatay bar grafikleri ----
+   Donut'lar artik satiri dolduracak sekilde buyuk ve merkezinde toplam
+   sayiyi gosteriyor; tum grafik degerleri (bar genislikleri, donut
+   segmentleri, trend cizgisi) sayfa yuklenince BIR KERE "cizilerek" acilir
+   (bkz. app/static/charts.js) -- JS kapaliysa/reduced-motion'da sunucunun
+   render ettigi NIHAI deger zaten doğru gorunur (progressive enhancement). */
+.donut-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--gap-section); }
+.donut-card { display: flex; flex-direction: column; align-items: center; gap: 1.1rem; text-align: center; }
+.donut-figure { position: relative; width: min(230px, 80%); aspect-ratio: 1 / 1; }
+.donut-chart { width: 100%; height: 100%; display: block; }
+.donut-track { stroke: var(--bg-alt); }
+.donut-seg { transition: stroke-dasharray var(--duration-chart) var(--ease), stroke-dashoffset var(--duration-chart) var(--ease); }
+.donut-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.donut-center .n { font-size: 1.9rem; font-weight: 700; font-family: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace; font-variant-numeric: tabular-nums; line-height: 1; }
+.donut-center .l { font-size: 0.72rem; color: var(--muted); margin-top: 0.25rem; }
+.donut-legend { display: flex; flex-direction: column; gap: 0.4rem; font-size: 0.82rem; width: 100%; max-width: 320px; }
+.donut-legend .row { display: flex; justify-content: space-between; gap: 0.6rem; text-align: left; }
+.donut-legend .row .label { display: flex; align-items: center; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.donut-legend .row .value { flex: 0 0 auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+.donut-legend .dot { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%; margin-right: 0.45rem; flex: 0 0 auto; }
+.donut-empty { color: var(--muted); font-size: 0.88rem; }
+
+.trend-chart { width: 100%; height: 170px; display: block; overflow: visible; }
+.trend-line { fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+/* Iki seri birbirinden KOLAY ayrilmali: mavi (SCA) vs kirmizi (secret).
+   Ikisi de kirmizi-turuncu aileden olsaydi ust uste bindiklerinde
+   ayirt edilemezlerdi. */
+.trend-sca { stroke: var(--sev-low-solid); }
+.trend-secret { stroke: var(--accent-red); }
+.trend-axis { display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--muted); margin-top: 0.3rem; }
+.trend-legend { display: flex; gap: 1.1rem; font-size: 0.82rem; margin-top: 0.5rem; }
+.trend-legend .dot { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%; margin-right: 0.4rem; }
+
+.hbar-list { display: flex; flex-direction: column; gap: 0.6rem; }
+.hbar-row { display: grid; grid-template-columns: minmax(80px, 160px) 1fr 2.6rem; align-items: center; gap: 0.7rem; font-size: 0.85rem; }
+.hbar-row .hbar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hbar-track { height: 0.6rem; border-radius: 999px; background: var(--bg-alt); overflow: hidden; }
+.hbar-fill { height: 100%; background: var(--brand); border-radius: 999px; transition: width var(--duration-chart) var(--ease); }
+.hbar-row .hbar-count { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.analytics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: var(--gap-section); }
+.sla-row-header { display: flex; justify-content: space-between; font-size: 0.82rem; margin-bottom: 0.3rem; }
+
+/* ---- Giris sayfasi ---- */
+.auth-brand {
+  display: flex; align-items: center; gap: 0.5rem;
+  font-weight: 700; font-size: 1.1rem; color: var(--text); margin-bottom: 1.1rem;
+}
+.auth-brand .dot { width: 0.65rem; height: 0.65rem; border-radius: 2px; background: var(--brand); }
+.auth-card { width: 360px; max-width: 90vw; margin-bottom: 0; }
+.auth-submit-row { margin-top: 1rem; }
+@media (prefers-reduced-motion: no-preference) {
+  .auth-brand, .auth-card { animation: statRise var(--duration-base) var(--ease) both; }
+  .auth-card { animation-delay: 60ms; }
+}
+
+[style*="color:#666"], [style*="color: #666"] { color: var(--muted) !important; }
+[style*="color:#444"], [style*="color: #444"] { color: var(--muted) !important; }
+[style*="color:#9b1c1c"], [style*="color: #9b1c1c"] { color: var(--danger-text) !important; }
+
+/* ---- Responsive: collapse sidebar below 860px ---- */
+@media (max-width: 860px) {
+  .topbar { display: flex; }
+  .sidebar-toggle { display: flex; }
+  .theme-toggle { display: none; } /* mobilde tema anahtari sidebar ceker/who-block icinde */
+  body.with-sidebar { flex-direction: column; }
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    z-index: 60;
+    transform: translateX(-100%);
+    transition: transform var(--duration-base) var(--ease);
+    box-shadow: var(--shadow-md);
+  }
+  .sidebar.open { transform: translateX(0); }
+  .sidebar-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 55;
+  }
+  .sidebar-backdrop.open { display: block; }
+  main { padding: 1.1rem; max-width: 100%; }
+  .donut-row { grid-template-columns: 1fr; }
+  .hbar-row { grid-template-columns: 90px 1fr 2.4rem; }
+}
+
+/* ---- Hareket tercihi: her sey saygı duyar, animasyon dekorasyon degil ---- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
+}

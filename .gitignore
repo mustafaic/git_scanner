@@ -27,5 +27,9 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Claude Code local tool state (not project content)
-.claude/
+# Claude Code local tool state (not project content) -- ancak proje-local
+# skill'ler (.claude/skills/) kalıcı tasarım sistemi dokümantasyonu olarak
+# commit edilir, bkz. .claude/skills/scanner-design-system/SKILL.md
+.claude/*
+!.claude/skills/
+!.claude/skills/**

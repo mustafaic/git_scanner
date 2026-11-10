@@ -21,33 +21,42 @@
   </form>
 </div>
 
+<div class="table-wrap">
 <table>
-  <thead><tr><th>Kullanıcı adı</th><th>Rol</th><th>Durum</th><th>Kilitli mi</th><th></th></tr></thead>
+  <thead><tr><th class="col-num">#</th><th>Kullanıcı adı</th><th>Rol</th><th>Durum</th><th>Kilitli mi</th><th></th></tr></thead>
   <tbody>
     {% for u in users %}
     <tr>
+      <td class="col-num">{{ loop.index }}</td>
       <td>{{ u.username }}</td>
       <td>{{ u.role }}</td>
       <td>{% if u.is_active %}aktif{% else %}<span class="badge badge-ACCEPTED_RISK">devre dışı</span>{% endif %}</td>
-      <td>{% if u.locked_until %}evet ({{ u.locked_until }}){% else %}-{% endif %}</td>
-      <td>
-        {% if u.username != user.username %}
-        <form method="post" action="/users/{{ u.id }}/toggle-active" class="inline">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <button class="btn" type="submit">{% if u.is_active %}Devre dışı bırak{% else %}Aktif et{% endif %}</button>
-        </form>
-        {% endif %}
-        <details style="display:inline-block;">
-          <summary class="btn" style="display:inline;">Parola sıfırla</summary>
-          <form method="post" action="/users/{{ u.id }}/reset-password">
+      <td>{% if u.locked_until %}evet, {{ u.locked_until | ts }} tarihine kadar{% else %}-{% endif %}</td>
+      <td class="cell-actions">
+        <div class="row-actions">
+          {% if u.username != user.username %}
+          <form method="post" action="/users/{{ u.id }}/toggle-active" class="inline">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <input type="password" name="new_password" placeholder="yeni parola" required>
-            <button class="btn btn-danger" type="submit">Sıfırla</button>
+            <button class="btn" type="submit">{% if u.is_active %}Devre dışı bırak{% else %}Aktif et{% endif %}</button>
           </form>
-        </details>
+          {% endif %}
+          <details class="popover">
+            <summary>Parola sıfırla</summary>
+            <div class="popover-panel">
+              <form method="post" action="/users/{{ u.id }}/reset-password">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="password" name="new_password" placeholder="yeni parola" required>
+                <button class="btn btn-danger" type="submit">Sıfırla</button>
+              </form>
+            </div>
+          </details>
+        </div>
       </td>
     </tr>
+    {% else %}
+    <tr><td colspan="6">Henüz kullanıcı yok.</td></tr>
     {% endfor %}
   </tbody>
 </table>
+</div>
 {% endblock %}

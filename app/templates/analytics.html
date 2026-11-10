@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}Analitik{% endblock %}
+{% block content %}
+{% macro donut(chart, title, total_label, empty_text) %}
+<div class="card">
+  <h3>{{ title }}</h3>
+  {% if chart.rows %}
+  <div class="donut-card">
+    <div class="donut-figure">
+      <svg viewBox="0 0 100 100" class="donut-chart" role="img" aria-label="{{ title }}">
+        <circle class="donut-track" cx="50" cy="50" r="40" fill="none" stroke-width="14"></circle>
+        {% for seg in chart.rows %}
+        <circle class="donut-seg" cx="50" cy="50" r="40" fill="none" stroke-width="14" stroke-linecap="butt"
+                style="stroke: {{ seg.color }}"
+                stroke-dasharray="{{ seg.dash_array }}" stroke-dashoffset="{{ seg.dash_offset }}"
+                transform="rotate(-90 50 50)"></circle>
+        {% endfor %}
+      </svg>
+      <div class="donut-center">
+        <span class="n">{{ chart.total }}</span>
+        <span class="l">{{ total_label }}</span>
+      </div>
+    </div>
+    <div class="donut-legend">
+      {% for seg in chart.rows %}
+      <div class="row">
+        <span class="label" title="{{ seg.label }}"><span class="dot" style="background:{{ seg.color }}"></span>{{ seg.label }}</span>
+        <span class="value">{{ seg.value }} <span class="muted">(%{{ seg.pct }})</span></span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% else %}
+  <p class="donut-empty">{{ empty_text }}</p>
+  {% endif %}
+</div>
+{% endmacro %}
+
+{% macro hbar_card(title, rows, empty_text) %}
+<div class="card">
+  <h3>{{ title }}</h3>
+  {% if rows %}
+  <div class="hbar-list">
+    {% for row in rows %}
+    <div class="hbar-row">
+      <span class="hbar-label" title="{{ row.label }}">{{ row.label }}</span>
+      <div class="hbar-track"><div class="hbar-fill" style="width:{{ row.width_pct }}%"></div></div>
+      <span class="hbar-count">{{ row.count }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="donut-empty">{{ empty_text }}</p>
+  {% endif %}
+</div>
+{% endmacro %}
+
+<div class="page-header">
+  <h2>Analitik</h2>
+</div>
+
+<form method="get" action="/analytics" class="filter-bar">
+  <label for="owner">Sahip/ekip filtresi</label>
+  <select name="owner" id="owner" class="auto-submit">
+    <option value="" {% if not owner_filter %}selected{% endif %}>Tümü</option>
+    {% for o in all_owners %}
+    <option value="{{ o }}" {% if owner_filter == o %}selected{% endif %}>{{ o }}</option>
+    {% endfor %}
+  </select>
+</form>
+
+<div class="stat-grid animate-in">
+  <div class="stat stat-primary"><div class="n">{{ open_findings_count }}</div><div class="l">Açık SCA bulgusu</div></div>
+  <div class="stat {% if kev_count > 0 %}stat-alert{% else %}stat-zero{% endif %}" title="CISA KEV: aktif olarak sömürülen zafiyetler listesi.">
+    <div class="n">{{ kev_count }}</div><div class="l">Aktif sömürülen (KEV) ⓘ</div>
+  </div>
+  <div class="stat {% if epss_high_count > 0 %}stat-alert{% else %}stat-zero{% endif %}" title="EPSS skoru %10'un üzerinde: önümüzdeki 30 günde istismar edilme olasılığı yüksek.">
+    <div class="n">{{ epss_high_count }}</div><div class="l">Yüksek istismar olasılığı (EPSS) ⓘ</div>
+  </div>
+  <div class="stat"><div class="n">{{ open_secrets_count }}</div><div class="l">Açık secret bulgusu</div></div>
+</div>
+
+<div class="donut-row">
+  {{ donut(severity_donut, "Açık bulguların önem derecesi dağılımı", "açık bulgu", "Şu an açık bulgu yok.") }}
+  {{ donut(fix_donut, "Açık bulguların yama durumu dağılımı", "açık bulgu", "Şu an açık bulgu yok.") }}
+</div>
+
+<div class="card">
+  <h3>Son 90 günde açık bulgu sayısı (yaklaşık trend)</h3>
+  {% if trend.has_data %}
+  <svg viewBox="0 0 600 160" preserveAspectRatio="none" class="trend-chart" role="img" aria-label="90 günlük açık bulgu trendi">
+    {% if trend.sca_points %}<polyline points="{{ trend.sca_points }}" class="trend-line trend-sca"></polyline>{% endif %}
+    {% if trend.secret_points %}<polyline points="{{ trend.secret_points }}" class="trend-line trend-secret"></polyline>{% endif %}
+  </svg>
+  <div class="trend-axis"><span>{{ trend.start_label }}</span><span>{{ trend.mid_label }}</span><span>{{ trend.end_label }}</span></div>
+  <div class="trend-legend">
+    <span><span class="dot" style="background:var(--sev-low-solid)"></span>SCA bulguları ({{ trend.sca_latest }} şu an açık)</span>
+    <span><span class="dot" style="background:var(--accent-red)"></span>Secret bulguları ({{ trend.secret_latest }} şu an açık)</span>
+  </div>
+  <p class="hint">Yaklaşık bir seri: panelden elle "false positive/accepted risk" yapılan kapanışlar bu grafiğe anında yansımaz (bkz. kaynak kod notu). Yön/eğilim için güvenilir, denetim amaçlı kesin sayı için <a href="/findings">bulgu listesine</a> bakın.</p>
+  {% else %}
+  <p class="donut-empty">Henüz trend gösterecek kadar veri yok.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3>SLA performansı (önem derecesine göre)</h3>
+  {% if sla_rows %}
+  <div class="hbar-list">
+    {% for row in sla_rows %}
+    <div>
+      <div class="sla-row-header">
+        <span>{{ row.label }}</span>
+        <span class="muted">{{ row.on_time }} zamanında, {{ row.overdue }} gecikmiş</span>
+      </div>
+      <div class="sev-bar">
+        <span class="seg-ontime" style="width:{{ row.on_time_pct }}%"></span>
+        <span class="seg-overdue" style="width:{{ row.overdue_pct }}%"></span>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="donut-empty">Açık bulgu yok.</p>
+  {% endif %}
+</div>
+
+{{ hbar_card("En riskli 10 repo (açık critical+high sayısına göre)", top_risky_repos, "Açık critical/high bulgusu olan repo yok.") }}
+
+<div class="analytics-grid">
+  {{ hbar_card("Ekosistem dağılımı (açık SCA bulgusu)", ecosystem_dist, "Açık bulgu yok.") }}
+  {{ hbar_card("Secret kural tipi dağılımı (açık secret bulgusu)", secret_rule_dist, "Açık secret bulgusu yok.") }}
+</div>
+{% endblock %}

@@ -17,8 +17,11 @@ from typing import Optional
 
 import httpx
 import jwt
+from sqlalchemy.orm import Session
 
+from core.backup_crypto import InvalidToken, decrypt_bytes
 from core.logging_setup import register_secret
+from core.models import Repository, RepoCredential
 
 LOG = logging.getLogger(__name__)
 
@@ -110,3 +113,47 @@ def load_private_key(path: str) -> str:
     content = Path(path).read_text(encoding="utf-8")
     register_secret(content)
     return content
+
+
+class StaticTokenAuth:
+    """GitHubAppAuth ile AYNI arayuz (sadece `get_token()`) -- JWT/installation
+    token degisimi YOK, panelden girilen sabit bir PAT'i doner. Faz 1
+    (panelden GitHub token ile repo ekleme, hibrit model): boylece
+    orchestrator/sync.py, orchestrator/extraction.py, orchestrator/secret_scan.py
+    gibi TUM `auth.get_token()` cagri yerleri HICBIR DEGISIKLIK gerektirmeden
+    hem GitHub App hem manuel-PAT repolarla calisir (duck typing)."""
+
+    def __init__(self, token: str) -> None:
+        self._token = token
+        register_secret(token)
+
+    def get_token(self, now: Optional[float] = None) -> str:
+        return self._token
+
+
+def resolve_auth_for_repo(
+    session: Session,
+    repo: Repository,
+    app_auth: Optional[GitHubAppAuth],
+    repo_token_key: Optional[bytes],
+) -> "GitHubAppAuth | StaticTokenAuth":
+    """Faz 1 (panelden GitHub token ile repo ekleme, hibrit model): her repo
+    icin dogru kimlik bilgisini doner -- `discovered_via='github_app'`
+    (varsayilan) ise mevcut App installation token'i (DEGISMEDEN), 'manual_pat'
+    ise `repo_credentials`'tan cozulen kendi PAT'i. Cagiran taraf
+    (orchestrator/main.py `_process_repo_check_job`) `.get_token()` DISINDA
+    hicbir seyi bilmesine gerek kalmadan ayni kodu kullanir."""
+    if repo.discovered_via != "manual_pat":
+        if app_auth is None:
+            raise RuntimeError("GitHub App kimligi yapilandirilmamis, repo_check islenemez")
+        return app_auth
+    if repo_token_key is None:
+        raise RuntimeError("REPO_TOKEN_ENCRYPTION_KEY_PATH yapilandirilmamis, manuel eklenen repo taranamaz")
+    cred = session.get(RepoCredential, repo.github_repo_id)
+    if cred is None:
+        raise RuntimeError(f"{repo.full_name} icin kayitli bir token yok (repo_credentials)")
+    try:
+        token = decrypt_bytes(cred.encrypted_token.encode("ascii"), repo_token_key).decode("utf-8")
+    except InvalidToken as exc:
+        raise RuntimeError(f"{repo.full_name} icin token cozulemedi (sifreleme anahtari degismis olabilir)") from exc
+    return StaticTokenAuth(token)

@@ -7,12 +7,16 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from core.notifications import (  # noqa: E402
     SmtpSettings,
     build_daily_digest_summary,
+    build_minimal_teams_text,
     send_email,
+    send_teams_message,
     should_notify_critical_sca,
     should_notify_new_secret,
 )
@@ -86,6 +90,99 @@ def test_send_email_password_is_registered_for_log_redaction():
         mock_smtp.return_value.__enter__.return_value = client
         send_email(settings, "owner@internal", "subject", "body")
     assert logging_setup._redact("password=SuperSecretSmtpPw123") == "password=***REDACTED***"
+
+
+def test_send_teams_message_posts_messagecard_payload():
+    with patch("core.notifications.httpx.Client") as mock_client_cls:
+        client = MagicMock()
+        mock_client_cls.return_value.__enter__.return_value = client
+        response = MagicMock()
+        client.post.return_value = response
+        send_teams_message("https://contoso.webhook.office.com/webhookb2/unit-test-token", "title", "text")
+        client.post.assert_called_once()
+        url, kwargs = client.post.call_args[0][0], client.post.call_args[1]
+        assert url == "https://contoso.webhook.office.com/webhookb2/unit-test-token"
+        assert kwargs["json"]["@type"] == "MessageCard"
+        assert kwargs["json"]["title"] == "title"
+        assert kwargs["json"]["text"] == "text"
+        response.raise_for_status.assert_called_once()
+
+
+def test_send_teams_message_raises_on_http_error():
+    import httpx
+
+    with patch("core.notifications.httpx.Client") as mock_client_cls:
+        client = MagicMock()
+        mock_client_cls.return_value.__enter__.return_value = client
+        response = MagicMock()
+        response.raise_for_status.side_effect = httpx.HTTPStatusError("bad", request=MagicMock(), response=MagicMock())
+        client.post.return_value = response
+        with pytest.raises(httpx.HTTPStatusError):
+            send_teams_message("https://contoso.webhook.office.com/webhookb2/unit-test-token-2", "t", "x")
+
+
+def test_send_teams_message_webhook_url_is_registered_for_log_redaction():
+    from core import logging_setup
+
+    with patch("core.notifications.httpx.Client") as mock_client_cls:
+        client = MagicMock()
+        mock_client_cls.return_value.__enter__.return_value = client
+        send_teams_message("https://contoso.webhook.office.com/webhookb2/unit-test-secret-token-3", "t", "x")
+    assert "unit-test-secret-token-3" not in logging_setup._redact(
+        "https://contoso.webhook.office.com/webhookb2/unit-test-secret-token-3"
+    )
+
+
+def test_send_teams_message_suppresses_httpx_request_log_leak(caplog):
+    """Regresyon testi: httpx, istek URL'sini loglarken yeniden serilestirir
+    (ör. varsayilan :443 portunu dusurur) -- register_secret'teki metin
+    eslesmesi bu durumda TUTMAZ ve webhook imzasi DUZ METIN sizar (gercek
+    bir Power Automate webhook'una karsi ampirik olarak bulundu). send_teams_message
+    bu yuzden httpx/httpcore'un istek logunu CAGRI SIRASINDA komple
+    susturmali -- bu test gercek bir httpx.Client + MockTransport ile (tam
+    httpx logging makinesini calistirarak, mock'lamadan) dogrular."""
+    import logging
+
+    import httpx
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"ok": True})
+
+    real_client_cls = httpx.Client
+
+    def client_factory(*args, **kwargs):
+        return real_client_cls(transport=httpx.MockTransport(handler))
+
+    secret_token = "super-secret-webhook-signature-xyz-789"
+    url_with_default_port = f"https://contoso.webhook.office.com:443/webhookb2/{secret_token}"
+
+    httpx_logger = logging.getLogger("httpx")
+    original_level = httpx_logger.level
+    httpx_logger.setLevel(logging.INFO)
+    try:
+        with caplog.at_level(logging.INFO, logger="httpx"):
+            with patch("core.notifications.httpx.Client", side_effect=client_factory):
+                send_teams_message(url_with_default_port, "t", "x")
+        assert not any(secret_token in record.getMessage() for record in caplog.records), (
+            "webhook URL'si httpx'in kendi istek loguna sizdi"
+        )
+        assert httpx_logger.level == logging.INFO  # cagri sonrasi onceki seviyeye geri donmeli
+    finally:
+        httpx_logger.setLevel(original_level)
+
+
+def test_build_minimal_teams_text_never_includes_package_or_cve_details():
+    """docs/THREAT_MODEL.md madde 9: Teams icerigi SADECE minimal olmali --
+    bu fonksiyon finding/secret nesnesini parametre olarak bile almaz, bu
+    yuzden yanlislikla detay sizdirmasi yapisal olarak imkansiz."""
+    from core.notifications import EVENT_CRITICAL_SCA_FINDING, EVENT_NEW_SECRET_FINDING
+
+    result = build_minimal_teams_text(EVENT_CRITICAL_SCA_FINDING)
+    assert "title" in result and "text" in result
+    assert "lodash" not in result["text"]  # ornek paket adi asla gecmemeli
+
+    result2 = build_minimal_teams_text(EVENT_NEW_SECRET_FINDING, panel_base_url="https://scanner.internal")
+    assert "https://scanner.internal/secrets" in result2["text"]
 
 
 def test_build_daily_digest_summary_consolidated_single_message():

@@ -21,7 +21,8 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import (
     api,
-    routes_actions,
+    routes_analytics,
+    routes_blast_radius,
     routes_audit,
     routes_auth,
     routes_coverage,
@@ -52,6 +53,7 @@ app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
 app.include_router(routes_auth.router)
 app.include_router(routes_dashboard.router)
+app.include_router(routes_analytics.router)
 app.include_router(routes_repos.router)
 # NOT: export router'i {finding_id}/{secret_id} path-parametreli router'lardan
 # ONCE register edilmeli -- Starlette rotalari eklenme sirasina gore dener,
@@ -62,7 +64,7 @@ app.include_router(routes_findings.router)
 app.include_router(routes_secrets.router)
 app.include_router(routes_audit.router)
 app.include_router(routes_tokens.router)
-app.include_router(routes_actions.router)
+app.include_router(routes_blast_radius.router)
 app.include_router(routes_coverage.router)
 app.include_router(routes_users.router)
 app.include_router(routes_settings.router)

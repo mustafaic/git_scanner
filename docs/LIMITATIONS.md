@@ -16,9 +16,15 @@ noktalardır. Her madde, ilgili kod/karar kaydına referans verir.
    Kimlik doğrulama tek faktörlüdür (kullanıcı adı + parola). Argon2id
    hash'leme, giriş rate-limit + geçici kilitleme ve oturum güvenliği
    (HttpOnly+SameSite, boşta zaman aşımı) değişmedi.
-3. **Teams webhook entegrasyonu yok.** Sadece iç SMTP bildirim kanalı var
-   (`app/routes_settings.py`). Teams webhook URL'si DB'de şifreli saklama
-   gerektirir (master_prompt.md 5) ve bu henüz uygulanmadı.
+3. **Teams webhook entegrasyonu** (`app/routes_settings.py` `/settings/teams`,
+   `core/notifications.py`) eklendi (2026-11-09, kullanıcı kararı). Webhook
+   URL'si admin panelden girilir, Fernet ile şifrelenip DB'de saklanır
+   (`TEAMS_ENCRYPTION_KEY_PATH`, bkz. `deploy/secrets/README.md`), sadece
+   resmi `*.webhook.office.com`/`*.logic.azure.com` adreslerine izin
+   verilir. İçerik her zaman minimaldir (sayılar + panel linki) — bkz.
+   `docs/THREAT_MODEL.md` madde 9. Bilinen sınırlama: olay bazlı
+   (kritik SCA / yeni secret / günlük özet) açık-kapalı anahtarları var
+   ama SMTP'deki gibi alıcı/kanal başına ayrı hız sınırlama yok.
 4. **CODEOWNERS otomatik tespiti yok.** Sahip eşlemesi (A5) sadece admin'in
    içe aktardığı CSV ile çalışır (ASSUMPTIONS.md #13). Şema (`repo_owners.source`)
    CODEOWNERS desteğine hazır, ama orchestrator'da henüz bir senkron adımı
@@ -97,3 +103,27 @@ noktalardır. Her madde, ilgili kod/karar kaydına referans verir.
     11: basit başlanır).
 21. **Egress doğrulama raporu** — bkz. `docs/EGRESS_REPORT.md` (ayrı
     belge, bu oturumda ayrıca üretildi/üretilecek).
+22. **Panelden PAT ile eklenen repo (Faz 1, 2026-11-10): token süresi/iptali
+    otomatik tespit edilmez.** Fine-grained PAT'ler genelde bir son kullanma
+    tarihine sahiptir; süre dolduğunda/admin GitHub'da token'ı iptal ettiğinde
+    sistem bunu SADECE bir sonraki tarama denemesi başarısız olunca fark eder
+    (`scan_runs.status='failed'`) — proaktif bir "token N gün içinde
+    dolacak" uyarısı YOK. Admin `/repositories` sayfasından taramanın
+    gidip gitmediğini elle kontrol etmeli.
+23. **Manuel PAT'lerin izin kapsamı sunucu tarafında doğrulanmaz** (bkz.
+    `docs/THREAT_MODEL.md` madde 11) — panel sadece token'ın repoya erişip
+    erişemediğini (`GET /repos/{owner}/{repo}` başarılı mı) kontrol eder,
+    gerçek izin setinin (Contents/Metadata Read-only ile sınırlı mı, yoksa
+    daha geniş mi) kendisini sorgulamaz; bu admin'in GitHub'da token
+    oluştururken dikkat etmesi gereken bir adımdır, panel bunu zorlayamaz.
+24. **PAT ile eklenen bir repo, App de aynı repoyu görmeye başlasa bile
+    `discovered_via='manual_pat'` olarak kalır.** App'in toplu keşfi
+    (`orchestrator/discovery.py::upsert_repositories`) mevcut bir satırın
+    `discovered_via` alanını hiç YAZMAZ (bilerek — sadece kendi keşfettiği
+    repo bilgilerini günceller). Pratikte zararsız (repo PAT ile taranmaya
+    devam eder) ama admin PAT'i kaldırırsa (`remove-credential`) repo
+    `discovered_via='manual_pat'` olarak kalıp otomatik hariç tutulur —
+    App'in artık görebildiği bu repoyu tekrar aktif etmek için panelden
+    "App'e geçir" gibi bir buton YOK; admin'in token'ı yeniden eklemesi
+    (aynı "+ Proje Ekle" formuyla) veya doğrudan veritabanında
+    `discovered_via='github_app'` yapması gerekir.

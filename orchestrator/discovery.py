@@ -50,6 +50,48 @@ def list_installation_repositories(
     return repos
 
 
+def fetch_repository_by_name(
+    api_base_url: str,
+    token: str,
+    owner: str,
+    repo_name: str,
+    http_client: Optional[httpx.Client] = None,
+) -> Dict[str, Any]:
+    """Tek bir repo icin GitHub REST API'den meta bilgi ceker -- GitHub App
+    installation token'indan BAGIMSIZ, admin'in panelden girdigi kendi PAT'i
+    ile (Faz 1, hibrit model: panelden GitHub token ile repo ekleme).
+    HTTP hatasini oldugu gibi yukari firlatir (`raise_for_status`); caller
+    (orchestrator/main.py `_process_onboarding_requests`) durum koduna gore
+    gelistirici-dostu bir hata metnine cevirir."""
+    client = http_client or httpx.Client(timeout=30.0)
+    response = client.get(
+        f"{api_base_url.rstrip('/')}/repos/{owner}/{repo_name}",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": API_VERSION_HEADER,
+        },
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def upsert_single_repository(session: Session, repo_json: Dict[str, Any], discovered_via: str) -> int:
+    """`upsert_repositories`'in (App'in toplu kesfi) TERSINE, DIGER repolarin
+    is_active durumuna DOKUNMAZ -- sadece bu tek repoyu ekler/gunceller
+    (panelden PAT ile manuel onboarding icin). Donen: github_repo_id."""
+    github_repo_id = repo_json["id"]
+    fields = _repo_fields(repo_json)
+    fields["discovered_via"] = discovered_via
+    stmt = (
+        pg_insert(Repository)
+        .values(github_repo_id=github_repo_id, **fields)
+        .on_conflict_do_update(index_elements=[Repository.github_repo_id], set_=fields)
+    )
+    session.execute(stmt)
+    return github_repo_id
+
+
 def _repo_fields(repo: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "full_name": repo["full_name"],

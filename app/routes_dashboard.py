@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session as DbSession
 from starlette.requests import Request
 
 from app.deps import get_db, get_repo_names, render_page, require_user
-from core.models import AdvisoryMirrorSync, Job, Repository, RepoOwner, SecretFinding, SystemHeartbeat, User, Finding
+from core.models import AdvisoryMirrorSync, Repository, RepoOwner, SecretFinding, SystemHeartbeat, User, Finding
 from core.settings_store import SLA_DAYS_KEY, get_setting
 from core.sla import compute_due_date, is_overdue, merged_sla_days
 
@@ -42,7 +42,6 @@ def dashboard(
         select(func.count()).select_from(SecretFinding).where(SecretFinding.lifecycle_status == "OPEN")
     ).scalar_one()
     active_repos = db.execute(select(func.count()).select_from(Repository).where(Repository.is_active.is_(True))).scalar_one()
-    pending_jobs = db.execute(select(func.count()).select_from(Job).where(Job.status == "pending")).scalar_one()
 
     # A8 SLA (master_prompt.md 6): "gecikenler listesi". due_date saklanan
     # bir kolon DEGIL, ayarlanabilir sla_days'e gore HER ISTEKTE hesaplanir
@@ -60,6 +59,24 @@ def dashboard(
             kev=kev, cvss_score=float(cvss) if cvss is not None else None, first_seen_at=first_seen_at, sla_days=sla_days,
         ))
     )
+
+    # Siddet dagilimi (UI: ozet cubuk grafigi) -- ayrica bir sorgu ACMAZ,
+    # yukarida zaten cekilmis open_finding_rows'u yeniden kullanir.
+    severity_buckets = {"critical": 0, "high": 0, "medium": 0, "low": 0, "none": 0}
+    for _kev, cvss, _first_seen in open_finding_rows:
+        score = float(cvss) if cvss is not None else None
+        if score is None:
+            severity_buckets["none"] += 1
+        elif score >= 9.0:
+            severity_buckets["critical"] += 1
+        elif score >= 7.0:
+            severity_buckets["high"] += 1
+        elif score >= 4.0:
+            severity_buckets["medium"] += 1
+        else:
+            severity_buckets["low"] += 1
+    severity_total = len(open_finding_rows) or 1
+    severity_pct = {k: round(v * 100 / severity_total, 1) for k, v in severity_buckets.items()}
 
     now = dt.datetime.now(dt.timezone.utc)
     heartbeats = db.execute(select(SystemHeartbeat)).scalars().all()
@@ -104,8 +121,9 @@ def dashboard(
         request, "dashboard.html",
         {
             "open_findings": open_findings, "kev_findings": kev_findings, "needs_review": needs_review,
-            "open_secrets": open_secrets, "active_repos": active_repos, "pending_jobs": pending_jobs,
+            "open_secrets": open_secrets, "active_repos": active_repos,
             "overdue_findings": overdue_findings,
+            "severity_buckets": severity_buckets, "severity_pct": severity_pct,
             "heartbeat_rows": heartbeat_rows, "mirror_sync_rows": mirror_sync_rows,
             "action_findings": action_findings, "action_repo_names": action_repo_names, "new_ids": new_ids,
             "all_owners": all_owners, "owner_filter": owner,

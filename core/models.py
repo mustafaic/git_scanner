@@ -34,6 +34,9 @@ class Base(DeclarativeBase):
 
 class Repository(Base):
     __tablename__ = "repositories"
+    __table_args__ = (
+        CheckConstraint("discovered_via in ('github_app','manual_pat')", name="repositories_discovered_via_check"),
+    )
 
     github_repo_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     full_name: Mapped[str] = mapped_column(String(500), nullable=False, unique=True)
@@ -50,6 +53,13 @@ class Repository(Base):
     # _poll_tick, orchestrator/triggers.py consume_triggers_and_enqueue).
     scan_excluded: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     scan_exclude_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Panelden GitHub token ile repo ekleme (hibrit model, 2026-11-10 kullanici
+    # karari): repo GitHub App'in org-wide kesfinden mi ('github_app',
+    # varsayilan/mevcut davranis) yoksa admin'in panelden girdigi bir
+    # fine-grained PAT ile mi ('manual_pat') eklendigini isaretler. Tarama
+    # zamaninda hangi token kullanilacagini bu alan belirler (bkz.
+    # orchestrator/github_auth.py::resolve_token_for_repo, core.models.RepoCredential).
+    discovered_via: Mapped[str] = mapped_column(String(20), nullable=False, default="github_app", server_default="github_app")
     # master_prompt.md 3.2.1: Hat A (Asama 2) bu alani HEAD SHA karsilastirmasinda kullanir.
     last_seen_sha: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     # master_prompt.md 4.4: secret taramasi icin ayri takip -- `last_scanned_sha..HEAD`
@@ -575,3 +585,60 @@ class NotificationLog(Base):
     sent_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+# --- Faz 1 (2026-11-10): panelden GitHub token ile repo ekleme (hibrit model) ----
+
+
+class RepoOnboardingRequest(Base):
+    """Admin'in panelden girdigi "owner/repo + PAT" istegi. `repositories.
+    github_repo_id` onboarding ANINDA henuz bilinmiyor (GitHub'in kendi
+    numeric ID'si, sadece GitHub'a sorulunca ogrenilir) -- bu yuzden istek
+    burada AYRI tutulur; orchestrator GitHub'dan cozup dogruladiktan SONRA
+    asil `repositories` satirini yazar (discovered_via='manual_pat') ve
+    bu istegi 'validated' yapar. Token DEGERI hicbir zaman log'a/audit_log'a
+    yazilmaz -- SADECE burada (Fernet ile sifreli) ve basariyla cozulunce
+    `repo_credentials`'ta durur."""
+
+    __tablename__ = "repo_onboarding_requests"
+    __table_args__ = (
+        CheckConstraint("status in ('pending','validated','failed')", name="repo_onboarding_requests_status_check"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    owner: Mapped[str] = mapped_column(String(255), nullable=False)
+    repo_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    encrypted_token: Mapped[str] = mapped_column(Text, nullable=False)
+    requested_by_user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    resolved_github_repo_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    validated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class RepoCredential(Base):
+    """discovered_via='manual_pat' bir repo icin kalici kimlik bilgisi.
+    GitHub App'in installation token'inin tersine, bu repo App'in gorebildigi
+    kapsamin DISINDA -- taramanin HER adiminda (extraction, secret_scan) bu
+    repoya ozel token kullanilir (bkz. orchestrator/github_auth.py::
+    resolve_token_for_repo). Fernet ile sifreli (core/backup_crypto.py,
+    Teams webhook ile AYNI mekanizma, ayri bir anahtar dosyasi:
+    REPO_TOKEN_ENCRYPTION_KEY_PATH) -- ham token hicbir zaman duz metin
+    DB sutununda tutulmaz."""
+
+    __tablename__ = "repo_credentials"
+
+    github_repo_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    encrypted_token: Mapped[str] = mapped_column(Text, nullable=False)
+    added_by_user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+    last_validated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_validation_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

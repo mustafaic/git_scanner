@@ -1,8 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Giriş - Scanner Panel{% endblock %}
 {% block content %}
-<div class="card" style="max-width:360px; margin: 3rem auto;">
-  <h2>Giriş</h2>
+<div class="auth-brand"><span class="dot"></span> Scanner Panel</div>
+<div class="card auth-card">
+  <h2>Giriş yap</h2>
   {% if error %}<div class="flash flash-error">{{ error }}</div>{% endif %}
   <form method="post" action="/login">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -10,7 +11,7 @@
     <input type="text" id="username" name="username" value="{{ username or '' }}" required autofocus>
     <label for="password">Parola</label>
     <input type="password" id="password" name="password" required>
-    <p style="margin-top:1rem;"><button class="btn btn-primary" type="submit">Giriş yap</button></p>
+    <p class="auth-submit-row"><button class="btn btn-primary" type="submit">Giriş yap</button></p>
   </form>
 </div>
 {% endblock %}
