@@ -32,8 +32,8 @@ def test_content_security_policy_header_present(client):
 
 
 def test_csp_script_src_is_self_only_no_cdn(client):
-    """htmx yerel vendor edilir (app/static/vendor/htmx.min.js) -- CSP
-    script-src'de hicbir CDN/harici origin OLMAMALI."""
+    """Panelin tum JS'i kendi kodumuzdur (app/static/) -- CSP script-src'de
+    hicbir CDN/harici origin OLMAMALI."""
     resp = client.get("/x")
     csp = resp.headers.get("content-security-policy", "")
     assert "script-src 'self'" in csp

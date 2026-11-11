@@ -1,0 +1,49 @@
+{#
+  Ortak Jinja makrolari.
+
+  confirm_action: yikici/geri alinamaz bir islem icin "tetikleyici + onay
+  penceresi" cifti uretir. TUM onay gerektiren islemler bunu kullanir --
+  boylece metin duzeni, buton sirasi ve davranis sayfadan sayfaya ayni olur.
+
+  Kullanim (ek form alani olmadan):
+    {{ confirm_action(
+         id="revoke-token-" ~ t.id,
+         action="/tokens/" ~ t.id ~ "/revoke",
+         csrf_token=csrf_token,
+         trigger_label="İptal et",
+         title="Token iptal edilsin mi?",
+         body="Bu token'ı kullanan entegrasyonlar hemen çalışmayı bırakır. Bu işlem geri alınamaz.",
+         confirm_label="Token'ı iptal et") }}
+
+  Kullanim (ek form alani ile -- {% call %} govdesi formun icine girer):
+    {% call confirm_action(id=..., action=..., csrf_token=csrf_token, ...) %}
+      <label for="reason">Gerekçe</label>
+      <input type="text" id="reason" name="reason" required>
+    {% endcall %}
+
+  Parametreler:
+    id            : benzersiz DOM id (satir bazli listelerde kaydi ekle)
+    action         : formun POST edilecegi URL
+    csrf_token     : sayfanin CSRF token'i (zorunlu -- her form tasimali)
+    trigger_label  : tetikleyici butonun metni
+    title / body   : onay penceresindeki baslik ve aciklama
+    confirm_label  : onay butonunun metni (ne OLACAGINI soylemeli)
+    danger         : onay butonu kirmizi mi (varsayilan: evet)
+    trigger_class  : tetikleyicinin CSS sinifi ("btn", "menu-option", ...)
+#}
+{% macro confirm_action(id, action, csrf_token, trigger_label, title, body,
+                        confirm_label, danger=true, trigger_class="btn") -%}
+<button type="button" class="{{ trigger_class }}{% if danger and trigger_class == 'menu-option' %} is-danger{% endif %}" data-modal-open="{{ id }}">{{ trigger_label }}</button>
+<dialog class="modal" id="{{ id }}" aria-labelledby="{{ id }}-title">
+  <form class="modal-form" method="post" action="{{ action }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <h3 class="modal-title" id="{{ id }}-title">{{ title }}</h3>
+    <p class="modal-body">{{ body }}</p>
+    {% if caller is defined %}{{ caller() }}{% endif %}
+    <div class="modal-actions">
+      <button type="button" class="btn" data-modal-close="{{ id }}">Vazgeç</button>
+      <button type="submit" class="btn {% if danger %}btn-danger{% else %}btn-primary{% endif %}">{{ confirm_label }}</button>
+    </div>
+  </form>
+</dialog>
+{%- endmacro %}

@@ -3,10 +3,11 @@
 Sadece YANIT header'i ekler, istek govdesine dokunmaz -- CSRF'teki
 (app/csrf.py) govde-yeniden-oynatma sorunuyla karsilasilmaz.
 
-CSP `script-src 'self'`: htmx yerel olarak vendor edilir
-(app/static/vendor/htmx.min.js), hicbir CDN'e bagimlilik yok (kural 5/6:
-dis bagimliligi aciklanmis/konfigure edilebilir tut). Inline <script>
-KULLANILMAZ (nonce gerektirmeden 'self' yeterli)."""
+CSP `script-src 'self'`: panelin TUM JavaScript'i kendi kodumuzdur ve
+`app/static/` altindan servis edilir -- hicbir CDN veya ucuncu taraf
+kutuphane YOK (2026-11-11: daha once vendor edilen htmx hicbir sayfada
+kullanilmadigi icin kaldirildi). Inline <script> KULLANILMAZ (nonce
+gerektirmeden 'self' yeterli)."""
 
 from __future__ import annotations
 

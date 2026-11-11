@@ -13,8 +13,13 @@
         <circle class="donut-seg" cx="50" cy="50" r="40" fill="none" stroke-width="14" stroke-linecap="butt"
                 style="stroke: {{ seg.color }}"
                 stroke-dasharray="{{ seg.dash_array }}" stroke-dashoffset="{{ seg.dash_offset }}"
-                transform="rotate(-90 50 50)"></circle>
+                transform="rotate(-90 50 50)"
+                data-label="{{ seg.label }}" data-value="{{ seg.value }}" data-pct="{{ seg.pct }}"></circle>
         {% endfor %}
+        {# Halkanin ic/dis kenar cizgileri: acik renkli (ör. sari) bir dilim
+           acik zemine komsu oldugunda sinirin kaybolmasini onler. #}
+        <circle class="donut-rim" cx="50" cy="50" r="47"></circle>
+        <circle class="donut-rim" cx="50" cy="50" r="33"></circle>
       </svg>
       <div class="donut-center">
         <span class="n">{{ chart.total }}</span>
@@ -94,8 +99,8 @@
   </svg>
   <div class="trend-axis"><span>{{ trend.start_label }}</span><span>{{ trend.mid_label }}</span><span>{{ trend.end_label }}</span></div>
   <div class="trend-legend">
-    <span><span class="dot" style="background:var(--sev-low-solid)"></span>SCA bulguları ({{ trend.sca_latest }} şu an açık)</span>
-    <span><span class="dot" style="background:var(--accent-red)"></span>Secret bulguları ({{ trend.secret_latest }} şu an açık)</span>
+    <span><span class="dot" style="background:var(--chart-sca)"></span>SCA bulguları ({{ trend.sca_latest }} şu an açık)</span>
+    <span><span class="dot" style="background:var(--chart-secret)"></span>Secret bulguları ({{ trend.secret_latest }} şu an açık)</span>
   </div>
   <p class="hint">Yaklaşık bir seri: panelden elle "false positive/accepted risk" yapılan kapanışlar bu grafiğe anında yansımaz (bkz. kaynak kod notu). Yön/eğilim için güvenilir, denetim amaçlı kesin sayı için <a href="/findings">bulgu listesine</a> bakın.</p>
   {% else %}

@@ -24,11 +24,11 @@
     {% if severity_pct.none %}<span class="seg-none" style="width:{{ severity_pct.none }}%"></span>{% endif %}
   </div>
   <div class="sev-legend">
-    <span><span class="dot" style="background:var(--sev-critical-solid)"></span>Critical ({{ severity_buckets.critical }})</span>
-    <span><span class="dot" style="background:var(--sev-high-solid)"></span>High ({{ severity_buckets.high }})</span>
-    <span><span class="dot" style="background:var(--sev-medium-solid)"></span>Medium ({{ severity_buckets.medium }})</span>
-    <span><span class="dot" style="background:var(--sev-low-solid)"></span>Low ({{ severity_buckets.low }})</span>
-    {% if severity_buckets.none %}<span><span class="dot" style="background:var(--sev-none-solid)"></span>Skor yok ({{ severity_buckets.none }})</span>{% endif %}
+    <span><span class="dot" style="background:var(--sev-critical)"></span>Critical ({{ severity_buckets.critical }})</span>
+    <span><span class="dot" style="background:var(--sev-high)"></span>High ({{ severity_buckets.high }})</span>
+    <span><span class="dot" style="background:var(--sev-medium)"></span>Medium ({{ severity_buckets.medium }})</span>
+    <span><span class="dot" style="background:var(--sev-low)"></span>Low ({{ severity_buckets.low }})</span>
+    {% if severity_buckets.none %}<span><span class="dot" style="background:var(--sev-none)"></span>Skor yok ({{ severity_buckets.none }})</span>{% endif %}
   </div>
 </div>
 {% endif %}

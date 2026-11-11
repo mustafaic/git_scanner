@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import confirm_action %}
 {% block title %}Repolar{% endblock %}
 {% block content %}
 <h2>Repolar</h2>
@@ -40,10 +41,14 @@
         </td>
         <td>{{ req.created_at | ts }}</td>
         <td class="cell-actions">
-          <form method="post" action="/repositories/onboarding-requests/{{ req.id }}/dismiss" class="inline">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button class="btn" type="submit">Kaldır</button>
-          </form>
+          {{ confirm_action(
+               id="dismiss-req-" ~ req.id,
+               action="/repositories/onboarding-requests/" ~ req.id ~ "/dismiss",
+               csrf_token=csrf_token,
+               trigger_label="Kaldır",
+               title="İstek listeden kaldırılsın mı?",
+               body=req.owner ~ "/" ~ req.repo_name ~ " için kaydedilmiş istek ve şifreli token silinir. Repoyu eklemek isterseniz formu yeniden doldurmanız gerekir.",
+               confirm_label="İsteği kaldır") }}
         </td>
       </tr>
       {% endfor %}
@@ -120,31 +125,38 @@
             <button class="btn" type="submit">Taramaya dahil et</button>
           </form>
           {% endif %}
-          {# Ikincil/yikici aksiyonlar tek bir menude toplanir -- her satirda
-             yan yana ucu birden durdugunda alan dagiliyordu. #}
+          {# Ikincil/yikici aksiyonlar tek bir kompakt menude: menu SADECE
+             secenek adlarini gosterir, secilen islem ekranin ortasinda bir
+             onay penceresi acar (bkz. _macros.html confirm_action). #}
           {% if not r.scan_excluded or r.github_repo_id in manual_repo_ids %}
-          <details class="popover">
-            <summary class="btn-icon" title="Diğer işlemler">&ctdot;</summary>
-            <div class="popover-panel popover-menu">
+          <details class="popover row-menu">
+            <summary class="btn-icon" title="Diğer işlemler" aria-label="Diğer işlemler">&ctdot;</summary>
+            <div class="popover-panel" role="menu">
               {% if not r.scan_excluded %}
-              <div class="menu-item">
-                <span class="menu-label">Taramadan hariç tut</span>
-                <form method="post" action="/repositories/{{ r.github_repo_id }}/exclude">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                  <input type="text" name="reason" placeholder="gerekçe (zorunlu)" required>
-                  <p><button class="btn btn-danger" type="submit">Hariç tut</button></p>
-                </form>
-              </div>
+              {% call confirm_action(
+                   id="exclude-repo-" ~ r.github_repo_id,
+                   action="/repositories/" ~ r.github_repo_id ~ "/exclude",
+                   csrf_token=csrf_token,
+                   trigger_label="Taramadan hariç tut",
+                   trigger_class="menu-option",
+                   title="Bu repo taramadan çıkarılsın mı?",
+                   body=r.full_name ~ " bundan sonra taranmaz; mevcut bulguları listede kalır ama güncellenmez. Gerekçe audit log'a yazılır.",
+                   confirm_label="Hariç tut") %}
+                <label for="exclude-reason-{{ r.github_repo_id }}">Gerekçe (zorunlu)</label>
+                <input type="text" id="exclude-reason-{{ r.github_repo_id }}" name="reason"
+                       placeholder="örn. arşivlendi, artık geliştirilmiyor" required>
+              {% endcall %}
               {% endif %}
               {% if r.github_repo_id in manual_repo_ids %}
-              <div class="menu-item">
-                <span class="menu-label">Kayıtlı token'ı kaldır</span>
-                <p class="hint">Bu repo panelden eklendi. Token kaldırılırsa taranamaz ve otomatik hariç tutulur.</p>
-                <form method="post" action="/repositories/{{ r.github_repo_id }}/remove-credential">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                  <button class="btn btn-danger" type="submit">Token'ı kaldır</button>
-                </form>
-              </div>
+              {{ confirm_action(
+                   id="remove-cred-" ~ r.github_repo_id,
+                   action="/repositories/" ~ r.github_repo_id ~ "/remove-credential",
+                   csrf_token=csrf_token,
+                   trigger_label="Kayıtlı token'ı kaldır",
+                   trigger_class="menu-option",
+                   title="Token kaldırılsın mı?",
+                   body=r.full_name ~ " panelden eklenmiş bir repo. Token kaldırılırsa bu repo artık taranamaz ve otomatik olarak taramadan çıkarılır. Taramaya geri almak için token'ı yeniden girmeniz gerekir.",
+                   confirm_label="Token'ı kaldır") }}
               {% endif %}
             </div>
           </details>

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import confirm_action %}
 {% block title %}Kullanıcılar{% endblock %}
 {% block content %}
 <h2>Kullanıcılar</h2>
@@ -35,21 +36,38 @@
       <td class="cell-actions">
         <div class="row-actions">
           {% if u.username != user.username %}
-          <form method="post" action="/users/{{ u.id }}/toggle-active" class="inline">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button class="btn" type="submit">{% if u.is_active %}Devre dışı bırak{% else %}Aktif et{% endif %}</button>
-          </form>
+            {% if u.is_active %}
+            {{ confirm_action(
+                 id="deactivate-user-" ~ u.id,
+                 action="/users/" ~ u.id ~ "/toggle-active",
+                 csrf_token=csrf_token,
+                 trigger_label="Devre dışı bırak",
+                 title=u.username ~ " devre dışı bırakılsın mı?",
+                 body="Bu kullanıcı artık panele giriş yapamaz ve açık oturumları geçersiz olur. İstediğiniz zaman yeniden aktif edebilirsiniz.",
+                 confirm_label="Devre dışı bırak") }}
+            {% else %}
+            {{ confirm_action(
+                 id="activate-user-" ~ u.id,
+                 action="/users/" ~ u.id ~ "/toggle-active",
+                 csrf_token=csrf_token,
+                 trigger_label="Aktif et",
+                 title=u.username ~ " yeniden aktif edilsin mi?",
+                 body="Bu kullanıcı yeniden panele giriş yapabilir hale gelir.",
+                 confirm_label="Aktif et",
+                 danger=false) }}
+            {% endif %}
           {% endif %}
-          <details class="popover">
-            <summary>Parola sıfırla</summary>
-            <div class="popover-panel">
-              <form method="post" action="/users/{{ u.id }}/reset-password">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <input type="password" name="new_password" placeholder="yeni parola" required>
-                <button class="btn btn-danger" type="submit">Sıfırla</button>
-              </form>
-            </div>
-          </details>
+          {% call confirm_action(
+               id="reset-pw-" ~ u.id,
+               action="/users/" ~ u.id ~ "/reset-password",
+               csrf_token=csrf_token,
+               trigger_label="Parola sıfırla",
+               title=u.username ~ " için parola sıfırlanacak",
+               body="Kullanıcının mevcut parolası geçersiz olur. Yeni parolayı kendisine güvenli bir kanaldan iletin -- panel bunu bir daha göstermez.",
+               confirm_label="Parolayı sıfırla") %}
+            <label for="new-pw-{{ u.id }}">Yeni parola (en az 12 karakter, 3 karakter sınıfı)</label>
+            <input type="password" id="new-pw-{{ u.id }}" name="new_password" autocomplete="new-password" required>
+          {% endcall %}
         </div>
       </td>
     </tr>

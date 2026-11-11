@@ -25,7 +25,21 @@ body:not(.with-sidebar) {
   justify-content: center;
   background: radial-gradient(ellipse 80% 60% at 50% 0%, color-mix(in srgb, var(--brand) 7%, transparent), transparent 70%), var(--bg);
 }
-body:not(.with-sidebar) main { flex: 0 0 auto; margin: 0; }
+/* Giris sayfasi: kart sayfanin TAM ORTASINDA.
+   Dikey ortalama body'nin `justify-content: center`'indan, yatay ortalama
+   buradaki `align-items: center`'dan gelir. Genel `main` kurali
+   `width: 100%` tasidigi icin (sidebar'li sayfalar icin gerekli) burada
+   ayrica bir `max-width` + flex ortalama GEREKLIDIR -- aksi halde kart
+   sayfanin soluna yapisir. */
+body:not(.with-sidebar) main {
+  flex: 0 0 auto;
+  margin: 0;
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
 
 a { color: var(--brand); text-decoration-color: color-mix(in srgb, var(--brand) 45%, transparent); }
 a:hover { text-decoration: underline; }
@@ -235,10 +249,14 @@ td code.secret, td .badge { font-variant-numeric: tabular-nums; }
 .badge-warning { background: var(--warning-bg); color: var(--warning-text); }
 .badge-neutral { background: var(--neutral-bg); color: var(--neutral-text); }
 .badge-danger { background: var(--danger-bg); color: var(--danger-text); }
-.sev-critical { background: var(--sev-critical-bg); color: var(--sev-critical-text); }
-.sev-high { background: var(--sev-high-bg); color: var(--sev-high-text); }
-.sev-medium { background: var(--sev-medium-bg); color: var(--sev-medium-text); }
-.sev-low { background: var(--sev-low-bg); color: var(--sev-low-text); }
+/* Severity rozetleri EVRENSEL renkleri dolgu olarak tasir (bkz. tokens.css):
+   kullanicinin belirledigi Low/Medium/High/Critical renkleri rozette de,
+   cubukta da, donut'ta da BIREBIR ayni gorunur -- ve `-ink` on plan rengi
+   olculerek secildigi icin kontrast her iki temada garantidir. */
+.sev-critical { background: var(--sev-critical); color: var(--sev-critical-ink); }
+.sev-high { background: var(--sev-high); color: var(--sev-high-ink); }
+.sev-medium { background: var(--sev-medium); color: var(--sev-medium-ink); }
+.sev-low { background: var(--sev-low); color: var(--sev-low-ink); }
 .muted { color: var(--muted); }
 .text-danger { color: var(--danger-text); }
 .hint { color: var(--muted); font-size: 0.85rem; }
@@ -298,13 +316,82 @@ td.cell-actions .row-actions { flex-wrap: nowrap; }
 /* Ikincil aksiyonlari tek bir "..." menusune toplayan tetikleyici. */
 .btn-icon { padding: 0.4rem 0.65rem; line-height: 1.2; letter-spacing: 0.1em; }
 
-/* Popover icinde birden fazla (birbirinden bagimsiz) aksiyon formu. */
-.popover-menu { display: flex; flex-direction: column; gap: 0.8rem; white-space: normal; }
-.popover-menu .menu-item { display: flex; flex-direction: column; gap: 0.4rem; align-items: flex-start; }
-.popover-menu .menu-item + .menu-item { border-top: 1px solid var(--border); padding-top: 0.8rem; }
-.popover-menu .menu-label { font-size: 0.82rem; font-weight: 650; }
-.popover-menu .hint { margin: 0; }
-.popover-menu input[type=text] { max-width: 100%; }
+/* ---- Satir menusu ("..." -> kompakt secenek listesi) ----
+   Panel SADECE secenek adlarini tasir; formlar/onaylar artik merkezdeki
+   modal pencerede (bkz. dialog.modal). Konumlandirma JS ile `position:
+   fixed` olarak yapilir (app/static/menus.js) -- cunku `.table-wrap`
+   overflow-x:auto tasidigi icin absolute konumlu bir panel tablonun
+   kenarinda KIRPILIYORDU (bildirilen hata). */
+.row-menu > .popover-panel {
+  position: fixed;
+  min-width: 0;
+  width: max-content;
+  max-width: min(260px, calc(100vw - 2rem));
+  padding: 0.3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+.menu-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: 0.45rem 0.6rem;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.menu-option:hover { background: var(--bg-alt); }
+.menu-option.is-danger { color: var(--danger-text); }
+
+/* ---- Onay penceresi (native <dialog>) ----
+   Yikici/geri alinamaz her islem once burada onaylanir. Native <dialog>
+   kullanilir: tarayici odagi hapseder, Esc ile kapanir ve "top layer"da
+   render edildigi icin HICBIR kapsayici tarafindan kirpilamaz. */
+dialog.modal {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-md);
+  padding: 0;
+  width: min(460px, calc(100vw - 2rem));
+  max-height: calc(100vh - 4rem);
+  overflow: auto;
+}
+dialog.modal::backdrop {
+  background: var(--overlay);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+@media (prefers-reduced-motion: no-preference) {
+  dialog.modal[open] { animation: modalIn var(--duration-base) var(--ease) both; }
+  dialog.modal[open]::backdrop { animation: backdropIn var(--duration-base) var(--ease) both; }
+}
+@keyframes modalIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes backdropIn { from { opacity: 0; } to { opacity: 1; } }
+
+.modal-form { margin: 0; padding: 1.15rem 1.25rem 1.1rem; }
+.modal-title { font-size: 1.05rem; font-weight: 650; margin: 0 0 0.5rem; }
+.modal-body { margin: 0 0 0.9rem; font-size: 0.9rem; color: var(--muted); line-height: 1.5; }
+.modal-form label:first-of-type { margin-top: 0; }
+.modal-form input[type=text], .modal-form input[type=password] { max-width: 100%; }
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--border);
+}
 
 .card {
   background: var(--surface);
@@ -405,15 +492,23 @@ input:focus, select:focus, textarea:focus { box-shadow: 0 0 0 3px color-mix(in s
   to { opacity: 1; transform: translateY(0); }
 }
 
-.sev-bar { display: flex; width: 100%; height: 0.65rem; border-radius: 999px; overflow: hidden; background: var(--bg-alt); }
+.sev-bar {
+  display: flex;
+  gap: 2px; /* segmentler arasi ince ayirici -- ozellikle sari/yesil gibi
+               acik renkli komsu segmentlerin siniri belirgin kalsin */
+  width: 100%;
+  height: 0.65rem;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--bg-alt);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
 .sev-bar span { height: 100%; transition: width var(--duration-chart) var(--ease); }
-/* Cubuk/donut DOLGULARI --sev-*-solid kullanir (bkz. tokens.css): yan yana
-   durduklarinda birbirinden ayrilmalari onceliklidir, metin tasimazlar. */
-.sev-bar .seg-critical { background: var(--sev-critical-solid); }
-.sev-bar .seg-high { background: var(--sev-high-solid); }
-.sev-bar .seg-medium { background: var(--sev-medium-solid); }
-.sev-bar .seg-low { background: var(--sev-low-solid); }
-.sev-bar .seg-none { background: var(--sev-none-solid); }
+.sev-bar .seg-critical { background: var(--sev-critical); }
+.sev-bar .seg-high { background: var(--sev-high); }
+.sev-bar .seg-medium { background: var(--sev-medium); }
+.sev-bar .seg-low { background: var(--sev-low); }
+.sev-bar .seg-none { background: var(--sev-none); }
 .sev-bar .seg-ontime { background: var(--success-text); }
 .sev-bar .seg-overdue { background: var(--danger-text); }
 .sev-legend { display: flex; flex-wrap: wrap; gap: 0.9rem; margin-top: 0.6rem; font-size: 0.78rem; color: var(--muted); }
@@ -489,9 +584,23 @@ code.secret {
 .donut-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--gap-section); }
 .donut-card { display: flex; flex-direction: column; align-items: center; gap: 1.1rem; text-align: center; }
 .donut-figure { position: relative; width: min(230px, 80%); aspect-ratio: 1 / 1; }
-.donut-chart { width: 100%; height: 100%; display: block; }
+.donut-chart { width: 100%; height: 100%; display: block; overflow: visible; }
 .donut-track { stroke: var(--bg-alt); }
-.donut-seg { transition: stroke-dasharray var(--duration-chart) var(--ease), stroke-dashoffset var(--duration-chart) var(--ease); }
+/* Halkanin ic/dis kenarina ince bir cerceve: sari gibi acik renkli bir
+   segment acik zemine komsu oldugunda halkanin sinirinin kaybolmasini
+   onler (renkleri degistirmeden gorunurlugu garantiler). */
+.donut-rim { stroke: var(--border); stroke-width: 1; fill: none; }
+.donut-seg {
+  cursor: default;
+  transition: stroke-dasharray var(--duration-chart) var(--ease),
+              stroke-dashoffset var(--duration-chart) var(--ease),
+              stroke-width var(--duration-fast) var(--ease),
+              opacity var(--duration-fast) var(--ease);
+}
+/* Uzerine gelinen dilim one cikar (kalinlasir), digerleri geri cekilir. */
+.donut-figure.has-hover .donut-seg { opacity: 0.4; }
+.donut-figure.has-hover .donut-seg.is-active { opacity: 1; stroke-width: 19; }
+
 .donut-center {
   position: absolute;
   inset: 0;
@@ -500,11 +609,25 @@ code.secret {
   align-items: center;
   justify-content: center;
   pointer-events: none;
+  padding: 0 18%;
+  text-align: center;
 }
 .donut-center .n { font-size: 1.9rem; font-weight: 700; font-family: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace; font-variant-numeric: tabular-nums; line-height: 1; }
-.donut-center .l { font-size: 0.72rem; color: var(--muted); margin-top: 0.25rem; }
-.donut-legend { display: flex; flex-direction: column; gap: 0.4rem; font-size: 0.82rem; width: 100%; max-width: 320px; }
-.donut-legend .row { display: flex; justify-content: space-between; gap: 0.6rem; text-align: left; }
+.donut-center .l { font-size: 0.72rem; color: var(--muted); margin-top: 0.25rem; line-height: 1.25; }
+/* Bir dilimin uzerindeyken merkez, o dilimin adi + yuzdesine doner. */
+.donut-center .n.is-hint { font-size: 1.55rem; }
+.donut-legend { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.82rem; width: 100%; max-width: 320px; }
+.donut-legend .row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  text-align: left;
+  padding: 0.22rem 0.35rem;
+  border-radius: var(--radius-sm);
+  cursor: default;
+  transition: background-color var(--duration-fast) var(--ease);
+}
+.donut-legend .row.is-active { background: var(--bg-alt); }
 .donut-legend .row .label { display: flex; align-items: center; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .donut-legend .row .value { flex: 0 0 auto; color: var(--muted); font-variant-numeric: tabular-nums; }
 .donut-legend .dot { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%; margin-right: 0.45rem; flex: 0 0 auto; }
@@ -512,11 +635,11 @@ code.secret {
 
 .trend-chart { width: 100%; height: 170px; display: block; overflow: visible; }
 .trend-line { fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
-/* Iki seri birbirinden KOLAY ayrilmali: mavi (SCA) vs kirmizi (secret).
-   Ikisi de kirmizi-turuncu aileden olsaydi ust uste bindiklerinde
-   ayirt edilemezlerdi. */
-.trend-sca { stroke: var(--sev-low-solid); }
-.trend-secret { stroke: var(--accent-red); }
+/* Seri renkleri severity rampasinin DISINDAN (mavi/mor) secildi -- bir
+   trend cizgisi "siddet" ifade etmez, yesil/sari/turuncu/kirmizi
+   kullanmasi anlam karisikligi yaratirdi (bkz. tokens.css). */
+.trend-sca { stroke: var(--chart-sca); }
+.trend-secret { stroke: var(--chart-secret); }
 .trend-axis { display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--muted); margin-top: 0.3rem; }
 .trend-legend { display: flex; gap: 1.1rem; font-size: 0.82rem; margin-top: 0.5rem; }
 .trend-legend .dot { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%; margin-right: 0.4rem; }
@@ -533,11 +656,11 @@ code.secret {
 
 /* ---- Giris sayfasi ---- */
 .auth-brand {
-  display: flex; align-items: center; gap: 0.5rem;
-  font-weight: 700; font-size: 1.1rem; color: var(--text); margin-bottom: 1.1rem;
+  display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+  font-weight: 700; font-size: 1.1rem; color: var(--text);
 }
 .auth-brand .dot { width: 0.65rem; height: 0.65rem; border-radius: 2px; background: var(--brand); }
-.auth-card { width: 360px; max-width: 90vw; margin-bottom: 0; }
+.auth-card { width: 100%; max-width: 360px; margin-bottom: 0; }
 .auth-submit-row { margin-top: 1rem; }
 @media (prefers-reduced-motion: no-preference) {
   .auth-brand, .auth-card { animation: statRise var(--duration-base) var(--ease) both; }

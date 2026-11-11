@@ -1,82 +1,110 @@
 /* Scanner Panel — design tokens.
-   Konsept: "enstrüman paneli" -- severity rengi sistemin TEK anlamlı rengi,
-   marka vurgusu (amber) sakin ve olcülü, sidebar HER iki temada da kendi
-   tutarlı (ve gercekten FARKLI) tonuna sahip -- "açık modda sidebar hala
-   koyu kalıyor" sorunu burada kökten çözülüyor: asagidaki her blokta
-   --sidebar-* degiskenleri KASITLI OLARAK farklı degerlere sahip.
 
-   SEVERITY RAMPASI (2026-11-11): critical/high/medium/low artik birbirine
-   yakin kahverengi-amber tonlari DEGIL -- mor -> kirmizi -> turuncu -> mavi
-   rampasi kullaniliyor. Komsu seviyeler arasinda en az 35 derece ton (hue)
-   farki var (eskiden 16-27 dereceydi, bu yuzden "belli olmuyordu").
-   Her seviye IKI tokene sahip:
-     --sev-X-bg / --sev-X-text : rozet (badge) icin, metin kontrasti >= 4.5:1
-                                 (WCAG AA) olacak sekilde olculup secildi.
-     --sev-X-solid             : cubuk/donut DOLGUSU icin -- yan yana
-                                 durduklarinda birbirinden ayrilmalari
-                                 onceliklidir, metin tasimazlar.
-   "none" (skor yok) KASITLI olarak doygunlugu dusuk notr gri: bir seviye
-   degil, "veri yok" durumu. */
+   ============================================================================
+   SEVERITY RENKLERI -- EVRENSEL, TEMADAN BAGIMSIZ (2026-11-11 kullanici karari)
+   ============================================================================
+   Low / Medium / High / Critical renkleri kullanici tarafindan SABIT olarak
+   belirlendi ve uygulamanin HER yerinde (rozet, cubuk, donut, lejant) ayni
+   degerleri tasir:
+
+       Low      #39B54A  yesil
+       Medium   #FCEE21  sari
+       High     #F7931E  turuncu
+       Critical #C1272D  kirmizi
+
+   Bu yuzden severity tokenlari BILEREK SADECE `:root` icinde tanimlidir ve
+   asagidaki tema bloklarinda (ne dark ne light) YENIDEN TANIMLANMAZ --
+   boylece "bir temada farkli gorunme" ihtimali yapisal olarak imkansizdir.
+   Yeni bir severity kullanimi eklerken bu tokenlardan baskasini yazma.
+
+   Her seviyenin iki tokeni var:
+     --sev-X      : rengin KENDISI (rozet arka plani, cubuk/donut dolgusu)
+     --sev-X-ink  : o rengin UZERINE yazilacak metin rengi. Hangisinin
+                    (beyaz mi koyu mu) kullanildigi olculerek secildi:
+                      critical -> beyaz  (5.84:1)
+                      high     -> koyu   (6.91:1)
+                      medium   -> koyu  (13.14:1)
+                      low      -> koyu   (5.96:1)
+                    Hepsi WCAG AA (>=4.5:1) esigini gecer ve iki temada
+                    AYNI oldugu icin kontrast her iki modda da garantidir.
+
+   "Skor yok" (--sev-none) bir seviye DEGIL, veri yoklugu durumudur -- bu
+   yuzden doygunlugu dusuk notr gridir ve tema ile birlikte degisir.
+
+   SERI renkleri (--chart-sca / --chart-secret) severity rampasinin DISINDAN
+   (mavi/mor) secildi: bir trend cizgisi bir "siddet" ifade etmez, severity
+   paletinden renk almasi anlam karisikligi yaratirdi.
+   ============================================================================ */
 :root {
   color-scheme: light dark;
-  --bg: #eef0f3;
-  --bg-alt: #e4e8ec;
-  --surface: #f9fafb;
-  --text: #1b232c;
-  --muted: #5c6773;
-  --border: #dde1e6;
-  --border-strong: #c3c9d1;
-  --brand: #966008;
+
+  /* --- Severity: evrensel, tema ile DEGISMEZ --- */
+  --sev-critical: #c1272d;
+  --sev-critical-ink: #ffffff;
+  --sev-high: #f7931e;
+  --sev-high-ink: #1b232c;
+  --sev-medium: #fcee21;
+  --sev-medium-ink: #1b232c;
+  --sev-low: #39b54a;
+  --sev-low-ink: #10231a;
+
+  /* --- Acik mod (varsayilan) -- yumusatilmis yuzeyler ---
+     Onceki surum (neredeyse beyaz #f9fafb yuzey + #eef0f3 zemin) "cok
+     parlak, goz aliyor" geri bildirimi aldi; tum yuzeyler bir kademe
+     koyulastirildi ve metin biraz yumusatildi. Metin kontrasti hala
+     cok yuksek (13:1), sadece parlaklik dusuruldu. */
+  --bg: #e6e9ed;
+  --bg-alt: #dde2e7;
+  --surface: #f1f3f6;
+  --text: #232a33;
+  --muted: #5b6672;
+  --border: #d5dae0;
+  --border-strong: #b9c1c9;
+  --brand: #8a5a08;
   --brand-contrast: #fffaf0;
-  --accent-red: #c62f28;
-  --sidebar-bg: #dde3e8;
-  --sidebar-text: #45505c;
-  --sidebar-text-strong: #161d25;
-  --sidebar-hover: #cfd7de;
-  --sidebar-active-bg: #c7d0d9;
-  --sidebar-border: #c9d0d8;
-  --shadow: 0 1px 2px rgba(16, 21, 27, 0.08);
-  --shadow-md: 0 6px 20px rgba(16, 21, 27, 0.10);
-  --danger-bg: #fbe4e2;
-  --danger-text: #9c2b22;
-  --success-bg: #e1f5e8;
-  --success-text: #1f7a42;
-  --warning-bg: #fbeed4;
-  --warning-text: #8a5a08;
-  --neutral-bg: #e7eaee;
-  --neutral-text: #434b54;
-  --code-bg: #eef1f4;
-  --sev-critical-bg: #f3e5f9;
-  --sev-critical-text: #6a1b9a;
-  --sev-critical-solid: #7b1fa2;
-  --sev-high-bg: #fbe3e3;
-  --sev-high-text: #b71c1c;
-  --sev-high-solid: #d32f2f;
-  --sev-medium-bg: #fcebd5;
-  --sev-medium-text: #8a5300;
-  --sev-medium-solid: #ed8b00;
-  --sev-low-bg: #e3edfa;
-  --sev-low-text: #15589e;
-  --sev-low-solid: #1976d2;
-  --sev-none-solid: #9aa3ab;
-  --row-alt: rgba(16, 21, 27, 0.025);
-  --row-hover: rgba(16, 21, 27, 0.045);
+  --accent-red: #c1272d;
+  --sidebar-bg: #d8dee4;
+  --sidebar-text: #434e5a;
+  --sidebar-text-strong: #171e26;
+  --sidebar-hover: #cad2da;
+  --sidebar-active-bg: #c2ccd5;
+  --sidebar-border: #c4ccd4;
+  --shadow: 0 1px 2px rgba(16, 21, 27, 0.07);
+  --shadow-md: 0 6px 20px rgba(16, 21, 27, 0.12);
+  --danger-bg: #f7e1df;
+  --danger-text: #94271f;
+  --success-bg: #ddf0e4;
+  --success-text: #1d7340;
+  --warning-bg: #f7e9cf;
+  --warning-text: #825307;
+  --neutral-bg: #e1e5ea;
+  --neutral-text: #414a53;
+  --code-bg: #e8ecf0;
+  --sev-none: #9aa3ab;
+  --chart-sca: #1565c0;
+  --chart-secret: #6a1b9a;
+  --row-alt: rgba(16, 21, 27, 0.022);
+  --row-hover: rgba(16, 21, 27, 0.04);
+  --overlay: rgba(23, 30, 38, 0.45);
+
   --radius-sm: 0.35rem;
   --radius-md: 0.65rem;
   --space-1: 0.35rem;
   --space-2: 0.6rem;
   --space-3: 1rem;
   --space-4: 1.5rem;
-  /* Sayfa govdesindeki TUM bagimsiz bloklar (kart, stat-grid, donut-row,
-     tablo, filtre cubugu) arasindaki TEK dikey ritim degeri. Grid gap'leri
-     de bunu kullanir -- boylece "kartlar bitisik, grafikler ayrik" gibi
-     tutarsizliklar olusamaz. */
+  /* Sayfa govdesindeki TUM bagimsiz bloklar arasindaki TEK dikey ritim
+     degeri. Grid gap'leri de bunu kullanir. */
   --gap-section: 1.1rem;
   --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
   --duration-fast: 140ms;
   --duration-base: 260ms;
   --duration-chart: 900ms;
 }
+
+/* NOT: Asagidaki tema bloklari severity (--sev-critical/high/medium/low ve
+   -ink) tokenlarini KASITLI OLARAK icermez -- onlar evrenseldir, yukaridaki
+   :root degerleri her temada gecerli kalir. */
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #10151b;
@@ -106,67 +134,49 @@
     --neutral-bg: #232b33;
     --neutral-text: #c3cdd6;
     --code-bg: #1c242d;
-    --sev-critical-bg: #2d1539;
-    --sev-critical-text: #dca7f0;
-    --sev-critical-solid: #ba68c8;
-    --sev-high-bg: #3b1718;
-    --sev-high-text: #ff8a85;
-    --sev-high-solid: #ef5350;
-    --sev-medium-bg: #38270d;
-    --sev-medium-text: #f2b155;
-    --sev-medium-solid: #ffa726;
-    --sev-low-bg: #152740;
-    --sev-low-text: #8cbcff;
-    --sev-low-solid: #42a5f5;
-    --sev-none-solid: #8e969e;
+    --sev-none: #8e969e;
+    --chart-sca: #4f9fe8;
+    --chart-secret: #c98fe0;
     --row-alt: rgba(255, 255, 255, 0.025);
     --row-hover: rgba(255, 255, 255, 0.045);
+    --overlay: rgba(0, 0, 0, 0.6);
   }
 }
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #eef0f3;
-  --bg-alt: #e4e8ec;
-  --surface: #f9fafb;
-  --text: #1b232c;
-  --muted: #5c6773;
-  --border: #dde1e6;
-  --border-strong: #c3c9d1;
-  --brand: #966008;
+  --bg: #e6e9ed;
+  --bg-alt: #dde2e7;
+  --surface: #f1f3f6;
+  --text: #232a33;
+  --muted: #5b6672;
+  --border: #d5dae0;
+  --border-strong: #b9c1c9;
+  --brand: #8a5a08;
   --brand-contrast: #fffaf0;
-  --accent-red: #c62f28;
-  --sidebar-bg: #dde3e8;
-  --sidebar-text: #45505c;
-  --sidebar-text-strong: #161d25;
-  --sidebar-hover: #cfd7de;
-  --sidebar-active-bg: #c7d0d9;
-  --sidebar-border: #c9d0d8;
-  --shadow: 0 1px 2px rgba(16, 21, 27, 0.08);
-  --shadow-md: 0 6px 20px rgba(16, 21, 27, 0.10);
-  --danger-bg: #fbe4e2;
-  --danger-text: #9c2b22;
-  --success-bg: #e1f5e8;
-  --success-text: #1f7a42;
-  --warning-bg: #fbeed4;
-  --warning-text: #8a5a08;
-  --neutral-bg: #e7eaee;
-  --neutral-text: #434b54;
-  --code-bg: #eef1f4;
-  --sev-critical-bg: #f3e5f9;
-  --sev-critical-text: #6a1b9a;
-  --sev-critical-solid: #7b1fa2;
-  --sev-high-bg: #fbe3e3;
-  --sev-high-text: #b71c1c;
-  --sev-high-solid: #d32f2f;
-  --sev-medium-bg: #fcebd5;
-  --sev-medium-text: #8a5300;
-  --sev-medium-solid: #ed8b00;
-  --sev-low-bg: #e3edfa;
-  --sev-low-text: #15589e;
-  --sev-low-solid: #1976d2;
-  --sev-none-solid: #9aa3ab;
-  --row-alt: rgba(16, 21, 27, 0.025);
-  --row-hover: rgba(16, 21, 27, 0.045);
+  --accent-red: #c1272d;
+  --sidebar-bg: #d8dee4;
+  --sidebar-text: #434e5a;
+  --sidebar-text-strong: #171e26;
+  --sidebar-hover: #cad2da;
+  --sidebar-active-bg: #c2ccd5;
+  --sidebar-border: #c4ccd4;
+  --shadow: 0 1px 2px rgba(16, 21, 27, 0.07);
+  --shadow-md: 0 6px 20px rgba(16, 21, 27, 0.12);
+  --danger-bg: #f7e1df;
+  --danger-text: #94271f;
+  --success-bg: #ddf0e4;
+  --success-text: #1d7340;
+  --warning-bg: #f7e9cf;
+  --warning-text: #825307;
+  --neutral-bg: #e1e5ea;
+  --neutral-text: #414a53;
+  --code-bg: #e8ecf0;
+  --sev-none: #9aa3ab;
+  --chart-sca: #1565c0;
+  --chart-secret: #6a1b9a;
+  --row-alt: rgba(16, 21, 27, 0.022);
+  --row-hover: rgba(16, 21, 27, 0.04);
+  --overlay: rgba(23, 30, 38, 0.45);
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
@@ -197,19 +207,10 @@
   --neutral-bg: #232b33;
   --neutral-text: #c3cdd6;
   --code-bg: #1c242d;
-  --sev-critical-bg: #2d1539;
-  --sev-critical-text: #dca7f0;
-  --sev-critical-solid: #ba68c8;
-  --sev-high-bg: #3b1718;
-  --sev-high-text: #ff8a85;
-  --sev-high-solid: #ef5350;
-  --sev-medium-bg: #38270d;
-  --sev-medium-text: #f2b155;
-  --sev-medium-solid: #ffa726;
-  --sev-low-bg: #152740;
-  --sev-low-text: #8cbcff;
-  --sev-low-solid: #42a5f5;
-  --sev-none-solid: #8e969e;
+  --sev-none: #8e969e;
+  --chart-sca: #4f9fe8;
+  --chart-secret: #c98fe0;
   --row-alt: rgba(255, 255, 255, 0.025);
   --row-hover: rgba(255, 255, 255, 0.045);
+  --overlay: rgba(0, 0, 0, 0.6);
 }

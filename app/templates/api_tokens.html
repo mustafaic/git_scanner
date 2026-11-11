@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import confirm_action %}
 {% block title %}API Token'larım{% endblock %}
 {% block content %}
 <h2>API Token'larım</h2>
@@ -41,10 +42,14 @@
       </td>
       <td class="cell-actions">
         {% if not t.revoked_at %}
-        <form method="post" action="/tokens/{{ t.id }}/revoke" class="inline">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <button class="btn btn-danger" type="submit">İptal et</button>
-        </form>
+        {{ confirm_action(
+             id="revoke-token-" ~ t.id,
+             action="/tokens/" ~ t.id ~ "/revoke",
+             csrf_token=csrf_token,
+             trigger_label="İptal et",
+             title="Token iptal edilsin mi?",
+             body="\"" ~ t.name ~ "\" token'ı hemen geçersiz olur ve onu kullanan entegrasyonlar çalışmayı bırakır. Bu işlem geri alınamaz -- yeni bir token oluşturmanız gerekir.",
+             confirm_label="Token'ı iptal et") }}
         {% endif %}
       </td>
     </tr>

@@ -27,9 +27,18 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Claude Code local tool state (not project content) -- ancak proje-local
-# skill'ler (.claude/skills/) kalıcı tasarım sistemi dokümantasyonu olarak
-# commit edilir, bkz. .claude/skills/scanner-design-system/SKILL.md
+# Claude Code yerel araç durumu -- proje içeriği değil, depoya girmez.
+# TEK istisna: .claude/skills/scanner-design-system/ -- bu, projenin kendi
+# kalıcı tasarım sistemi sözleşmesidir (renk/spacing tokenları, component
+# sözlüğü) ve ekibin görmesi gerekir, bu yüzden bilerek takip edilir.
+# Üçüncü taraf skill'ler (ör. frontend-design, kendi LICENSE'ı ile gelir)
+# bizim proje dosyamız DEĞİLDİR -- depoya alınmaz.
 .claude/*
 !.claude/skills/
-!.claude/skills/**
+.claude/skills/*
+!.claude/skills/scanner-design-system/
+!.claude/skills/scanner-design-system/**
+
+# Geliştirme sırasında kullanılan görev brief'i/prompt dosyası -- ürün
+# kodu veya dokümantasyonu değil.
+/design.md

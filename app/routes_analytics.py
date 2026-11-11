@@ -34,19 +34,19 @@ _TOP_RISKY_REPO_LIMIT = 10
 _TOP_ECOSYSTEM_LIMIT = 8
 _TOP_SECRET_RULE_LIMIT = 8
 
-# Donut/cubuk DOLGU renkleri --sev-*-solid tokenlarindan gelir (bkz.
-# app/static/css/tokens.css): mor -> kirmizi -> turuncu -> mavi rampasi,
-# komsu seviyeler arasinda en az 35 derece ton farki. "none" doygunlugu
-# dusuk notr gri -- bir seviye degil, "skor yok" durumu.
+# Donut dolgulari EVRENSEL severity tokenlarindan gelir (bkz.
+# app/static/css/tokens.css): Low yesil / Medium sari / High turuncu /
+# Critical kirmizi -- temadan bagimsiz, uygulamanin her yerinde ayni.
+# "none" bir seviye degil, "skor yok" durumu: notr gri.
 _SEVERITY_COLORS = {
-    "critical": "var(--sev-critical-solid)", "high": "var(--sev-high-solid)",
-    "medium": "var(--sev-medium-solid)", "low": "var(--sev-low-solid)", "none": "var(--sev-none-solid)",
+    "critical": "var(--sev-critical)", "high": "var(--sev-high)",
+    "medium": "var(--sev-medium)", "low": "var(--sev-low)", "none": "var(--sev-none)",
 }
 _SEVERITY_LABELS = {"critical": "Critical", "high": "High", "medium": "Medium", "low": "Low", "none": "Skor yok"}
 
 _FIX_BUCKET_COLORS = {
     "patch_available": "var(--success-text)", "no_fix_yet": "var(--warning-text)",
-    "unknown": "var(--neutral-text)", "other": "var(--sev-none-solid)",
+    "unknown": "var(--neutral-text)", "other": "var(--sev-none)",
 }
 _FIX_BUCKET_LABELS = {
     "patch_available": "Yama mevcut", "no_fix_yet": "Henüz yama yok",
